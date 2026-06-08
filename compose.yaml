@@ -1,0 +1,256 @@
+services:
+# Infrastructure and Utility Services
+  redis:
+    container_name: redis
+    image: redis:6.2
+    restart: always
+    ports:
+      - ${REDIS_PORT}:6379
+    entrypoint: redis-server --requirepass ${REDIS_PASSWORD}
+# Core Services
+  functions:
+    container_name: functions
+    profiles:
+      - core-services
+    depends_on:
+      - redis
+    image: ghcr.io/veryeasycode/bizarre-functions:v4.93.1
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - 30001:80
+    volumes:
+      - /var/www/bzr_v5/static:/usr/bizarre-functions/upload
+      - /var/www/bzr_v5/log:/usr/bizarre-functions/log
+    env_file: .env
+    environment:
+      PORT: 80
+      BASE_URL: /api
+      NODE_ENV: production
+      LOG_ROTATE_INTERVAL: 2
+      LOG_DIRECTORY: ./log
+      MONGO_HOST: host.docker.internal
+      REDIS_HOST: redis
+      # Line Menu Cloud Sync
+      LOCAL_EMENU_CLOUD_URL: http://host.docker.internal:${SERVICE_LINE_MENU_API_PORT}/
+      LOCAL_EMENU_CLOUD_LINE_OA: https://${HOSTNAME}.local/emc/
+      CLOUD_EMENU_CLOUD_URL: https://${CLOUD_SERVER_NAME}/emc/api/
+      CLOUD_EMENU_CLOUD_LINE_OA: https://${CLOUD_SERVER_NAME}/emc/
+  triggers:
+    container_name: triggers
+    profiles:
+      - core-services
+    depends_on:
+      - redis
+    image: ghcr.io/veryeasycode/bizarre-trigger:v4.3.0
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    env_file: .env
+    environment:
+      MONGO_HOST: host.docker.internal
+      REDIS_HOST: redis
+  mongostream:
+    container_name: mongostream
+    profiles:
+      - core-services
+    depends_on:
+      - redis
+    image: ghcr.io/veryeasycode/ez-mongo-stream:v4.66.1
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - ${SERVICE_MONGOSTREAM_PORT}:80
+    env_file: .env
+    environment:
+      PORT: 80
+      NODE_ENV: production
+      MONGO_HOST: host.docker.internal
+      REDIS_HOST: redis
+  authenticator:
+    container_name: authenticator
+    profiles:
+      - core-services
+    depends_on:
+      - redis
+    # Image for x86 Architecture
+    # image: ghcr.io/veryeasycode/bizarre-authenticator:v4.51.19
+    # Image for armhf Architecture
+    image: ghcr.io/veryeasycode/bizarre-authenticator:v4.52.0
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - ${SERVICE_AUTHENTICATOR_PORT}:80
+    volumes:
+      - /var/www/bzr_v5/static:/app/src/recognition/images
+      - /var/www/bzr_v5/log:/usr/bizarre-functions/log
+    env_file: .env
+    environment:
+      PORT: 80
+      FLASK_ENV: production
+      MONGO_HOST: host.docker.internal
+      MONGO_USER_COLLECTION: _users
+      MONGO_USER_ENCODING_COLLECTION: user_encoding
+      CONFIDENT_LEVEL: 0.6
+      REDIS_HOST: redis
+      REDIS_EXPIRATION_DAYS: 30
+  backoffice:
+    container_name: backoffice
+    profiles:
+      - core-services
+    image: ghcr.io/veryeasycode/bizarre-backoffice:v4.107.0
+    restart: always
+    ports:
+      - ${SERVICE_BACKOFFICE_PORT}:80
+  backoffice2_api:
+    container_name: backoffice2_api
+    profiles:
+      - core-services
+    image: ghcr.io/veryeasycode/bzr-v5-back-office-api:v1.11.0
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - ${SERVICE_BACKOFFICE2_API_PORT}:3000
+    environment:
+      AUTHENTICATOR_BASE_URL: http://authenticator/v4/auth
+      JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:27017/${MONGO_DB}?authSource=admin&directConnection=true
+  backoffice2_web:
+    container_name: backoffice2_web
+    profiles:
+      - core-services
+    image: ghcr.io/veryeasycode/bzr-v5-back-office-web:v1.21.0
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - ${SERVICE_BACKOFFICE2_UI_PORT}:80
+    environment:
+      API_URL: /bo/api
+      FUNCTION_BASE_URL: /api
+      LINE_MENU_API_URL: https://${CLOUD_SERVER_NAME}/emc/api/
+  edc_api:
+    container_name: edc_api
+    profiles:
+      - core-services
+    image: ghcr.io/veryeasycode/edc-api:v5.4.1
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - ${SERVICE_EDC_API_PORT}:80
+    env_file: .env
+    environment:
+      PORT: 80
+      MONGO_HOST: host.docker.internal
+  edc_web:
+    container_name: edc_web
+    profiles:
+      - core-services
+    image: ghcr.io/veryeasycode/edc-ui:v5.0.27
+    restart: always
+    ports:
+      - ${SERVICE_EDC_UI_PORT}:80
+  line_menu_bot:
+    container_name: line_menu_bot
+    profiles:
+      - core-services
+    depends_on:
+      - redis
+      - mongostream
+    image: ghcr.io/veryeasycode/line-menu-bot:v1.5.0
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - ${SERVICE_LINE_MENU_BOT_PORT}:3000
+    environment:
+      PREFIX: /line-menu-bot
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:${REDIS_PORT}
+      MESSAGE_GATEWAY_URL: https://${CLOUD_SERVER_NAME}
+      MESSAGE_GATEWAY_HANDSHAKE_PATH: /message-gateway/socket.io
+      BIZARRE_STREAM_URL: ws://mongostream
+      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:27017/${MONGO_DB}?authSource=admin&directConnection=true
+      EDC_URL: http://edc_api/edc
+# Cloud Services
+  message_gateway:
+    container_name: message_gateway
+    profiles:
+      - cloud-services
+    depends_on:
+      - redis
+    image: ghcr.io/veryeasycode/message-gateway:v1.1.0
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - ${SERVICE_MESSAGE_GATEWAY_PORT}:3000
+    env_file: .env
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:${REDIS_PORT}
+  line_menu_api:
+    container_name: line_menu_api
+    profiles:
+      - cloud-services
+    image: ghcr.io/veryeasycode/emenu-cloud-backend:v1.47.0
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - ${SERVICE_LINE_MENU_API_PORT}:80
+    env_file: .env
+    environment:
+      BASE_URL: https://${SERVER_NAME}/emc/api
+      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/e-menu-cloud?authSource=admin&directConnection=true
+      DOMAIN_NAME: https://${SERVER_NAME}
+      PORT: 80
+      LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN}
+    volumes:
+      - /var/www/bzr_v5/emc/storage:/app/storage
+  line_menu_web:
+    container_name: line_menu_web
+    profiles:
+      - cloud-services
+    image: ghcr.io/veryeasycode/emenu-cloud-web:v1.38.0
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - ${SERVICE_LINE_MENU_WEB_PORT}:80
+    environment:
+      API_URL: https://${SERVER_NAME}/emc/api
+      IMG_PREFIX: https://${SERVER_NAME}/emc/storage/
+      SITE_URL: https://${SERVER_NAME}/
+      MESSAGE_GATEWAY_URL: https://${SERVER_NAME}/message-gateway
+      DELIVERY_WEB_URL: https://${SERVER_NAME}/emc-delivery
+  line_menu_web_lite:
+    container_name: line_menu_web_lite
+    profiles:
+      - cloud-services
+    image: ghcr.io/veryeasycode/line-menu-web-lite:v1.4.0
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - ${SERVICE_LINE_MENU_WEB_LITE_PORT}:80
+    environment:
+      API_URL: https://${SERVER_NAME}/emc/api
+      IMG_PREFIX: https://${SERVER_NAME}/emc/storage/
+  line_delivery_web:
+    container_name: line_delivery_web
+    profiles:
+      - cloud-services
+    image: ghcr.io/veryeasycode/line-delivery-web:v1.1.0
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - ${SERVICE_LINE_DELIVERY_WEB_PORT}:80
+    environment:
+      API_URL: https://${SERVER_NAME}/emc/api
+      IMG_PREFIX: https://${SERVER_NAME}/emc/storage/
+      MESSAGE_GATEWAY_URL: https://${SERVER_NAME}/message-gateway
