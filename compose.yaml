@@ -115,7 +115,7 @@ services:
     environment:
       AUTHENTICATOR_BASE_URL: http://authenticator/v4/auth
       JWT_SECRET: ${JWT_SECRET}
-      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:27017/${MONGO_DB}?authSource=admin&directConnection=true
+      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
   backoffice2_web:
     container_name: backoffice2_web
     profiles:
@@ -171,7 +171,7 @@ services:
       MESSAGE_GATEWAY_URL: https://${CLOUD_SERVER_NAME}
       MESSAGE_GATEWAY_HANDSHAKE_PATH: /message-gateway/socket.io
       BIZARRE_STREAM_URL: ws://mongostream
-      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:27017/${MONGO_DB}?authSource=admin&directConnection=true
+      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
       EDC_URL: http://edc_api/edc
 # Cloud Services
   message_gateway:
