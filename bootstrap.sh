@@ -1,11 +1,17 @@
 #!/bin/bash
 
 # --- Global Configuration ---
-# Set package names and targeted versions for Debian 13 (Trixie) / Ubuntu stock repos
-NGINX_VERSION="1.26.3-3*"
+# Set package versions for your target platform before running.
+## General
 NJS_PACKAGE="libnginx-mod-http-js"
-NJS_VERSION="0.8.9-1*"
 DOCKER_VERSION="5:29.5.3*"
+MONGODB_VERSION="8.0"
+## Platform: Raspberry Pi 5 — Debian Trixie arm64
+NGINX_VERSION="1.26.3-3*"
+NJS_VERSION="0.8.9-1*"
+## Platform: Ubuntu Jammy x86_64
+# NGINX_VERSION="1.18.0*"
+# NJS_VERSION="1.18.0*"
 
 # Exit immediately if a command exits with a non-zero status
 set -e
@@ -27,7 +33,7 @@ help() {
 }
 
 log() {
-  echo -e "\n🚀 \033[1;34m$1\033[0m"
+  echo -e "\n⚙️  \033[1;34m$1\033[0m"
 }
 
 install_and_pin() {
@@ -116,6 +122,86 @@ setup_nginx() {
   sudo systemctl status nginx --no-pager
 }
 
+setup_mongodb() {
+  log "Setting up MongoDB ${MONGODB_VERSION}..."
+
+  # Install prerequisites
+  sudo apt-get update
+  sudo apt-get install -y gnupg curl
+
+  # Fetch MongoDB GPG key
+  curl -fsSL "https://www.mongodb.org/static/pgp/server-${MONGODB_VERSION}.asc" | \
+    sudo gpg -o /usr/share/keyrings/mongodb-server-${MONGODB_VERSION}.gpg --dearmor
+
+  # Determine OS distribution and codename
+  local os_id
+  os_id=$(. /etc/os-release && echo "$ID")
+
+  local codename
+  codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+
+  local arch
+  arch=$(dpkg --print-architecture)
+
+  # MongoDB only publishes arm64 packages for Ubuntu, not Debian.
+  # Raspberry Pi (arm64) on Debian must use the Ubuntu Jammy repo instead.
+  if [ "$arch" = "arm64" ] && [ "$os_id" = "debian" ]; then
+    os_id="ubuntu"
+    codename="jammy"
+  elif [ "$os_id" = "debian" ] && [ "$codename" = "trixie" ]; then
+    # Trixie has no official MongoDB release yet; fall back to bookworm
+    codename="bookworm"
+  fi
+
+  # Setup MongoDB repository list
+  echo "deb [ arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/mongodb-server-${MONGODB_VERSION}.gpg ] \
+https://repo.mongodb.org/apt/${os_id} ${codename}/mongodb-org/${MONGODB_VERSION} multiverse" | \
+    sudo tee /etc/apt/sources.list.d/mongodb-org-${MONGODB_VERSION}.list > /dev/null
+
+  log "Installing MongoDB packages..."
+  sudo apt-get update
+  sudo apt-get install -y mongodb-org
+  sudo apt-mark hold mongodb-org
+
+  log "Stopping auto-started MongoDB instance from package postinst..."
+  sudo systemctl stop mongod || true
+  sudo rm -rf /var/lib/mongodb/*
+
+  log "Generating MongoDB keyfile..."
+  sudo mkdir -p /opt/keyfile
+  openssl rand -base64 756 | sudo tee /opt/keyfile/mongo-keyfile > /dev/null
+  sudo chmod 400 /opt/keyfile/mongo-keyfile
+  sudo chown mongodb:mongodb /opt/keyfile/mongo-keyfile
+
+  log "Initializing MongoDB data directory permissions..."
+  sudo mkdir -p /var/lib/mongodb
+  sudo chown -R mongodb:mongodb /var/lib/mongodb
+  sudo mkdir -p /var/log/mongodb
+  sudo chown -R mongodb:mongodb /var/log/mongodb
+  sudo cp templates/mongodb/mongod-01.conf /etc/mongod.conf
+
+  log "Starting and enabling MongoDB service..."
+  sudo systemctl enable mongod
+  sudo systemctl start mongod
+  sudo systemctl status mongod --no-pager
+
+  log "Enabling MongoDB authentication..."
+  until bash -c '</dev/tcp/localhost/27017' 2>/dev/null; do sleep 1; done
+  mongosh ./scripts/create_mongodb_user.js
+  sudo cp templates/mongodb/mongod-02.conf /etc/mongod.conf
+  sudo systemctl restart mongod
+
+  log "Initializing MongoDB replica set..."
+  sudo cp templates/mongodb/mongod-03.conf /etc/mongod.conf
+  local replica_set
+  replica_set=$(grep '^MONGO_REPLICA_SET=' .env | cut -d= -f2)
+  echo "Initiating MongoDB replica set with name: $replica_set"
+  sudo sed -i "s/{{MONGO_REPLICA_SET}}/${replica_set}/" /etc/mongod.conf
+  sudo systemctl restart mongod
+  until bash -c '</dev/tcp/localhost/27017' 2>/dev/null; do sleep 1; done
+  mongosh ./scripts/init_mongodb_repset.js
+}
+
 configure_pam() {
   log "Configuring PAM permissions for Nginx..."
   sudo cp templates/pam.d/* /etc/pam.d/
@@ -161,6 +247,21 @@ uninstall() {
   sudo rm -f /etc/apt/sources.list.d/docker.list || true
   sudo rm -f /etc/apt/keyrings/docker.asc || true
 
+  log "Stopping and disabling MongoDB service..."
+  sudo systemctl stop mongod || true
+  sudo systemctl disable mongod || true
+
+  log "Purging MongoDB packages..."
+  sudo apt-mark unhold mongodb-org || true
+  sudo apt purge mongodb-org -y || true
+
+  log "Removing MongoDB directories and repository configuration..."
+  sudo rm -rf /var/lib/mongodb /var/log/mongodb || true
+  sudo rm -rf /opt/keyfile || true
+  sudo rm -f /etc/mongod.conf || true
+  sudo rm -f /etc/apt/sources.list.d/mongodb-org-${MONGODB_VERSION}.list || true
+  sudo rm -f /usr/share/keyrings/mongodb-server-${MONGODB_VERSION}.gpg || true
+
   # 💡 Future software uninstalls can be appended here (e.g., uninstall_node)
 
   log "🗑️ Uninstall and cleanup complete!"
@@ -178,6 +279,7 @@ run_installation_only() {
   prepare_environment
   setup_docker
   setup_nginx
+  setup_mongodb
   log "📦 Installation complete (configuration and PAM skipped)!"
 }
 
@@ -185,6 +287,7 @@ run_full_setup() {
   prepare_environment
   setup_docker
   setup_nginx
+  setup_mongodb
   configure_pam
   deploy_config
   # 💡 Future software setups can be appended here (e.g., setup_node)
