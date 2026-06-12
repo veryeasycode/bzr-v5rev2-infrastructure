@@ -20,11 +20,12 @@ Package versions are pinned in the **Global Configuration** section at the top o
 ## Usage
 
 ```bash
-./bootstrap.sh        # full setup: install + PAM + deploy config
-./bootstrap.sh -i     # installation only (Docker, Nginx, MongoDB — no config deploy)
-./bootstrap.sh -r     # reconfigure only (redeploy Nginx config)
-./bootstrap.sh -u     # uninstall everything and purge packages
-./bootstrap.sh -h     # help
+./bootstrap.sh                  # full setup: install + PAM + deploy config
+./bootstrap.sh -i               # installation only (Docker, Nginx, MongoDB — no config deploy)
+./bootstrap.sh -i nginx mongodb # install only the listed software (docker, nginx, mongodb)
+./bootstrap.sh -r               # reconfigure only (redeploy Nginx config)
+./bootstrap.sh -u               # uninstall everything and purge packages
+./bootstrap.sh -h               # help
 ```
 
 ## What bootstrap.sh does
