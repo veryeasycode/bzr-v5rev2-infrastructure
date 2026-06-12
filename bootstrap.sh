@@ -4,14 +4,17 @@
 # Set package versions for your target platform before running.
 ## General
 NJS_PACKAGE="libnginx-mod-http-js"
+PAM_PACKAGE="libnginx-mod-http-auth-pam"
 DOCKER_VERSION="5:29.5.3*"
 MONGODB_VERSION="8.0"
 ## Platform: Raspberry Pi 5 — Debian Trixie arm64
 NGINX_VERSION="1.26.3-3*"
 NJS_VERSION="0.8.9-1*"
+PAM_VERSION="1:1.5.5-3*"
 ## Platform: Ubuntu Jammy x86_64
 # NGINX_VERSION="1.18.0*"
 # NJS_VERSION="1.18.0*"
+# PAM_VERSION="1.18.0*"
 
 # Exit immediately if a command exits with a non-zero status
 set -e
@@ -22,14 +25,18 @@ cd "$(dirname "$0")"
 # --- Helper Functions ---
 
 help() {
-  echo "Usage: ./bootstrap.sh [options]"
+  echo "Usage: ./bootstrap.sh [options] [software ...]"
   echo "Options:"
-  echo "  -i          Installation only (install Docker, Nginx, and MongoDB without configuring)"
-  echo "  -r          Reconfigure only (run deploy config)"
-  echo "  -u          Uninstall services, purge packages, and autoremove"
-  echo "  -h          Show this help message"
-  echo "  (no args)   Run full setup steps"
-  echo "Example: ./bootstrap.sh -u"
+  echo "  -i [software ...]   Installation only, without configuring."
+  echo "                      Optionally pick specific software: docker, nginx, mongodb (default: all)"
+  echo "  -r                  Reconfigure only (run deploy config)"
+  echo "  -u                  Uninstall services, purge packages, and autoremove"
+  echo "  -h                  Show this help message"
+  echo "  (no args)           Run full setup steps"
+  echo "Examples:"
+  echo "  ./bootstrap.sh -i                # install docker, nginx, and mongodb"
+  echo "  ./bootstrap.sh -i nginx mongodb  # install only nginx and mongodb"
+  echo "  ./bootstrap.sh -u"
 }
 
 log() {
@@ -102,6 +109,8 @@ setup_nginx() {
 
   install_and_pin "nginx" "${NGINX_VERSION}"
   install_and_pin "${NJS_PACKAGE}" "${NJS_VERSION}"
+
+  install_and_pin "${PAM_PACKAGE}" "${PAM_VERSION}"
 
   log "Starting and enabling Nginx..."
   sudo systemctl enable nginx
@@ -202,10 +211,10 @@ uninstall() {
   sudo systemctl disable nginx || true
 
   log "Removing package holds..."
-  sudo apt-mark unhold nginx "${NJS_PACKAGE}" docker-ce docker-ce-cli || true
+  sudo apt-mark unhold nginx "${NJS_PACKAGE}" "${PAM_PACKAGE}" docker-ce docker-ce-cli || true
 
   log "Purging Nginx and NJS packages..."
-  sudo apt-get purge -y nginx nginx-common "${NJS_PACKAGE}"
+  sudo apt-get purge -y nginx nginx-common "${NJS_PACKAGE}" "${PAM_PACKAGE}"
   sudo apt-get autoremove -y
 
   log "Stopping and disabling Docker service..."
@@ -246,10 +255,29 @@ run_reconfig_only() {
 }
 
 run_installation_only() {
+  local components=("$@")
+  if [ ${#components[@]} -eq 0 ]; then
+    components=(docker nginx mongodb)
+  fi
+
+  # Validate all names before installing anything
+  local component
+  for component in "${components[@]}"; do
+    case $component in
+      docker|nginx|mongodb ) ;;
+      * ) echo "❌ Unknown software: $component (available: docker, nginx, mongodb)"; help; exit 1 ;;
+    esac
+  done
+
   prepare_environment
-  setup_docker
-  setup_nginx
-  setup_mongodb
+  for component in "${components[@]}"; do
+    case $component in
+      docker ) setup_docker ;;
+      nginx ) setup_nginx ;;
+      mongodb ) setup_mongodb ;;
+    esac
+  done
+  # 💡 Future software installs can be appended to the case above (e.g., node)
   log "📦 Installation complete (configuration and PAM skipped)!"
 }
 
@@ -279,13 +307,14 @@ while getopts "iruh" opt; do
     \? ) help; exit 1 ;;
   esac
 done
+shift $((OPTIND - 1))
 
 if [ "$UNINSTALL_ONLY" = true ]; then
   uninstall
 elif [ "$RECONFIG_ONLY" = true ]; then
   run_reconfig_only
 elif [ "$INSTALL_ONLY" = true ]; then
-  run_installation_only
+  run_installation_only "$@"
 else
   run_full_setup
 fi

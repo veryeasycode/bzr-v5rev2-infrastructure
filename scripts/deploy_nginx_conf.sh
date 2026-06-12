@@ -3,6 +3,8 @@
 # Clean up files
 rm -f /etc/nginx/sites-enabled/default
 rm -f /etc/nginx/sites-enabled/bzr_v5.conf
+rm -f /etc/nginx/sites-available/bzr_v5.conf
+rm -f /etc/nginx/conf.d/bzr_v5.conf
 rm -f /etc/ssl/certificate.crt
 rm -f /etc/ssl/private/private.key
 
