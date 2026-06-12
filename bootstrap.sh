@@ -24,7 +24,7 @@ cd "$(dirname "$0")"
 help() {
   echo "Usage: ./bootstrap.sh [options]"
   echo "Options:"
-  echo "  -i          Installation only (install Docker and Nginx without configuring)"
+  echo "  -i          Installation only (install Docker, Nginx, and MongoDB without configuring)"
   echo "  -r          Reconfigure only (run deploy config)"
   echo "  -u          Uninstall services, purge packages, and autoremove"
   echo "  -h          Show this help message"
@@ -39,83 +39,70 @@ log() {
 install_and_pin() {
   local package_name=$1
   local version=$2
-  
   log "Installing $package_name (Version: $version)..."
-  sudo apt install "${package_name}=${version}" -y
-  
-  log "Pinning $package_name to prevent accidental updates..."
+  sudo apt-get install -y "${package_name}=${version}"
   sudo apt-mark hold "$package_name"
+}
+
+wait_for_mongodb() {
+  until bash -c '</dev/tcp/localhost/27017' 2>/dev/null; do sleep 1; done
 }
 
 # --- Core Setup Steps ---
 
 prepare_environment() {
   log "Preparing environment and scripts..."
-  sudo apt update
+  sudo apt-get update
   chmod 755 scripts/*.sh
 }
 
 setup_docker() {
   log "Setting up Docker..."
-  
-  # Install prerequisites
+
   sudo apt-get update
   sudo apt-get install -y ca-certificates curl gnupg
-  
-  # Create keyrings directory
   sudo install -m 0755 -d /etc/apt/keyrings
-  
-  # Determine OS distribution and codename
+
   local os_id
   os_id=$(. /etc/os-release && echo "$ID")
-  
-  # Fallback to debian if the OS is not ubuntu or debian
   if [ "$os_id" != "ubuntu" ] && [ "$os_id" != "debian" ]; then
     os_id="debian"
   fi
-  
+
   local codename
   codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
-  # Handle fallback for Debian 13 (Trixie) which might not have official Docker release yet
+  # Trixie has no official Docker release yet; fall back to bookworm
   if [ "$codename" = "trixie" ]; then
     codename="bookworm"
   fi
-  
-  # Fetch Docker GPG key
+
   sudo curl -fsSL "https://download.docker.com/linux/${os_id}/gpg" -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
-  
-  # Setup Docker repository list
-  echo \
-    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/${os_id} \
-    ${codename} stable" | \
+
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/${os_id} ${codename} stable" | \
     sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    
+
   log "Installing Docker packages..."
   sudo apt-get update
-  
   install_and_pin "docker-ce" "${DOCKER_VERSION}"
   install_and_pin "docker-ce-cli" "${DOCKER_VERSION}"
-  
-  log "Installing additional Docker components..."
-  sudo apt install -y containerd.io docker-buildx-plugin docker-compose-plugin
-  
+  sudo apt-get install -y containerd.io docker-buildx-plugin docker-compose-plugin
+
   log "Starting and enabling Docker service..."
   sudo systemctl enable docker
   sudo systemctl start docker
   sudo systemctl status docker --no-pager
-  
+
   log "Adding www-data user to docker group..."
   sudo usermod -a -G docker www-data
 }
 
 setup_nginx() {
-  # Install standard Nginx
+  log "Setting up Nginx..."
+
   install_and_pin "nginx" "${NGINX_VERSION}"
-  
-  # Install NJS using the global native package variable
   install_and_pin "${NJS_PACKAGE}" "${NJS_VERSION}"
-  
+
   log "Starting and enabling Nginx..."
   sudo systemctl enable nginx
   sudo systemctl start nginx
@@ -125,22 +112,15 @@ setup_nginx() {
 setup_mongodb() {
   log "Setting up MongoDB ${MONGODB_VERSION}..."
 
-  # Install prerequisites
   sudo apt-get update
   sudo apt-get install -y gnupg curl
 
-  # Fetch MongoDB GPG key
   curl -fsSL "https://www.mongodb.org/static/pgp/server-${MONGODB_VERSION}.asc" | \
     sudo gpg -o /usr/share/keyrings/mongodb-server-${MONGODB_VERSION}.gpg --dearmor
 
-  # Determine OS distribution and codename
-  local os_id
+  local os_id codename arch
   os_id=$(. /etc/os-release && echo "$ID")
-
-  local codename
   codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
-
-  local arch
   arch=$(dpkg --print-architecture)
 
   # MongoDB only publishes arm64 packages for Ubuntu, not Debian.
@@ -153,8 +133,7 @@ setup_mongodb() {
     codename="bookworm"
   fi
 
-  # Setup MongoDB repository list
-  echo "deb [ arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/mongodb-server-${MONGODB_VERSION}.gpg ] \
+  echo "deb [ arch=${arch} signed-by=/usr/share/keyrings/mongodb-server-${MONGODB_VERSION}.gpg ] \
 https://repo.mongodb.org/apt/${os_id} ${codename}/mongodb-org/${MONGODB_VERSION} multiverse" | \
     sudo tee /etc/apt/sources.list.d/mongodb-org-${MONGODB_VERSION}.list > /dev/null
 
@@ -174,10 +153,8 @@ https://repo.mongodb.org/apt/${os_id} ${codename}/mongodb-org/${MONGODB_VERSION}
   sudo chown mongodb:mongodb /opt/keyfile/mongo-keyfile
 
   log "Initializing MongoDB data directory permissions..."
-  sudo mkdir -p /var/lib/mongodb
-  sudo chown -R mongodb:mongodb /var/lib/mongodb
-  sudo mkdir -p /var/log/mongodb
-  sudo chown -R mongodb:mongodb /var/log/mongodb
+  sudo mkdir -p /var/lib/mongodb /var/log/mongodb
+  sudo chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb
   sudo cp templates/mongodb/mongod-01.conf /etc/mongod.conf
 
   log "Starting and enabling MongoDB service..."
@@ -185,30 +162,28 @@ https://repo.mongodb.org/apt/${os_id} ${codename}/mongodb-org/${MONGODB_VERSION}
   sudo systemctl start mongod
   sudo systemctl status mongod --no-pager
 
-  log "Enabling MongoDB authentication..."
-  until bash -c '</dev/tcp/localhost/27017' 2>/dev/null; do sleep 1; done
+  log "Creating MongoDB admin user..."
+  wait_for_mongodb
   mongosh ./scripts/create_mongodb_user.js
+
+  log "Enabling MongoDB authentication..."
   sudo cp templates/mongodb/mongod-02.conf /etc/mongod.conf
   sudo systemctl restart mongod
 
   log "Initializing MongoDB replica set..."
-  sudo cp templates/mongodb/mongod-03.conf /etc/mongod.conf
   local replica_set
   replica_set=$(grep '^MONGO_REPLICA_SET=' .env | cut -d= -f2)
-  echo "Initiating MongoDB replica set with name: $replica_set"
+  sudo cp templates/mongodb/mongod-03.conf /etc/mongod.conf
   sudo sed -i "s/{{MONGO_REPLICA_SET}}/${replica_set}/" /etc/mongod.conf
   sudo systemctl restart mongod
-  until bash -c '</dev/tcp/localhost/27017' 2>/dev/null; do sleep 1; done
+  wait_for_mongodb
   mongosh ./scripts/init_mongodb_repset.js
 }
 
 configure_pam() {
   log "Configuring PAM permissions for Nginx..."
   sudo cp templates/pam.d/* /etc/pam.d/
-  
-  # Silently handle group creation if 'shadow' already exists by dropping stderr
   sudo groupadd shadow 2>/dev/null || true
-  
   sudo usermod -a -G shadow www-data
   sudo chown root:shadow /etc/shadow
   sudo chmod g+r /etc/shadow
@@ -229,23 +204,20 @@ uninstall() {
   log "Removing package holds..."
   sudo apt-mark unhold nginx "${NJS_PACKAGE}" docker-ce docker-ce-cli || true
 
-  log "Purging Nginx and NJS modules (removing configs)..."
-  sudo apt purge nginx nginx-common "${NJS_PACKAGE}" -y
-
-  log "Running autoremove to clean up unused dependencies..."
-  sudo apt autoremove -y
+  log "Purging Nginx and NJS packages..."
+  sudo apt-get purge -y nginx nginx-common "${NJS_PACKAGE}"
+  sudo apt-get autoremove -y
 
   log "Stopping and disabling Docker service..."
   sudo systemctl stop docker || true
   sudo systemctl disable docker || true
 
   log "Purging Docker packages..."
-  sudo apt purge docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker-ce-rootless-extras -y || true
+  sudo apt-get purge -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker-ce-rootless-extras || true
 
   log "Removing Docker directories and repository configuration..."
   sudo rm -rf /var/lib/docker /var/lib/containerd || true
-  sudo rm -f /etc/apt/sources.list.d/docker.list || true
-  sudo rm -f /etc/apt/keyrings/docker.asc || true
+  sudo rm -f /etc/apt/sources.list.d/docker.list /etc/apt/keyrings/docker.asc || true
 
   log "Stopping and disabling MongoDB service..."
   sudo systemctl stop mongod || true
@@ -253,14 +225,12 @@ uninstall() {
 
   log "Purging MongoDB packages..."
   sudo apt-mark unhold mongodb-org || true
-  sudo apt purge mongodb-org -y || true
+  sudo apt-get purge -y mongodb-org || true
 
   log "Removing MongoDB directories and repository configuration..."
-  sudo rm -rf /var/lib/mongodb /var/log/mongodb || true
-  sudo rm -rf /opt/keyfile || true
+  sudo rm -rf /var/lib/mongodb /var/log/mongodb /opt/keyfile || true
   sudo rm -f /etc/mongod.conf || true
-  sudo rm -f /etc/apt/sources.list.d/mongodb-org-${MONGODB_VERSION}.list || true
-  sudo rm -f /usr/share/keyrings/mongodb-server-${MONGODB_VERSION}.gpg || true
+  sudo rm -f /etc/apt/sources.list.d/mongodb-org-${MONGODB_VERSION}.list /usr/share/keyrings/mongodb-server-${MONGODB_VERSION}.gpg || true
 
   # 💡 Future software uninstalls can be appended here (e.g., uninstall_node)
 
@@ -310,7 +280,6 @@ while getopts "iruh" opt; do
   esac
 done
 
-# Run chosen workflow based on flags
 if [ "$UNINSTALL_ONLY" = true ]; then
   uninstall
 elif [ "$RECONFIG_ONLY" = true ]; then

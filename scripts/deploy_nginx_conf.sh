@@ -47,5 +47,5 @@ ln -s /etc/nginx/sites-available/bzr_v5.conf /etc/nginx/sites-enabled/bzr_v5.con
 cp certs/certificate.crt /etc/ssl/certificate.crt
 cp certs/private.key /etc/ssl/private/private.key
 
-# Restart service
-systemctl start nginx
+# Reload service to apply new configuration
+systemctl reload nginx
