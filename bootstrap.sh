@@ -11,10 +11,10 @@ MONGODB_VERSION="8.0"
 # NGINX_VERSION="1.26.3-3*"
 # NJS_VERSION="0.8.9-1*"
 # PAM_VERSION="1:1.5.5-3*"
-## Platform: Ubuntu Jammy x86_64
-NGINX_VERSION="1.18.0*"
-NJS_VERSION="1.18.0*"
-PAM_VERSION="1.18.0*"
+## Platform: Ubuntu Noble x86_64
+NGINX_VERSION="1.24.0-2*"
+NJS_VERSION="0.8.2-1*"
+PAM_VERSION="1:1.5.5-2*"
 
 # Exit immediately if a command exits with a non-zero status
 set -e
