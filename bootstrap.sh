@@ -8,13 +8,13 @@ PAM_PACKAGE="libnginx-mod-http-auth-pam"
 DOCKER_VERSION="5:29.5.3*"
 MONGODB_VERSION="8.0"
 ## Platform: Raspberry Pi 5 — Debian Trixie arm64
-NGINX_VERSION="1.26.3-3*"
-NJS_VERSION="0.8.9-1*"
-PAM_VERSION="1:1.5.5-3*"
+# NGINX_VERSION="1.26.3-3*"
+# NJS_VERSION="0.8.9-1*"
+# PAM_VERSION="1:1.5.5-3*"
 ## Platform: Ubuntu Jammy x86_64
-# NGINX_VERSION="1.18.0*"
-# NJS_VERSION="1.18.0*"
-# PAM_VERSION="1.18.0*"
+NGINX_VERSION="1.18.0*"
+NJS_VERSION="1.18.0*"
+PAM_VERSION="1.18.0*"
 
 # Exit immediately if a command exits with a non-zero status
 set -e
@@ -47,7 +47,7 @@ install_and_pin() {
   local package_name=$1
   local version=$2
   log "Installing $package_name (Version: $version)..."
-  sudo apt-get install -y "${package_name}=${version}"
+  sudo apt-get install -y --allow-downgrades "${package_name}=${version}"
   sudo apt-mark hold "$package_name"
 }
 
