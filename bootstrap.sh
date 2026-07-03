@@ -1,20 +1,21 @@
 #!/bin/bash
 
 # --- Global Configuration ---
-# Set package versions for your target platform before running.
 ## General
 NJS_PACKAGE="libnginx-mod-http-js"
 PAM_PACKAGE="libnginx-mod-http-auth-pam"
 DOCKER_VERSION="5:29.5.3*"
 MONGODB_VERSION="8.0"
 ## Platform: Raspberry Pi 5 — Debian Trixie arm64
-# NGINX_VERSION="1.26.3-3*"
-# NJS_VERSION="0.8.9-1*"
-# PAM_VERSION="1:1.5.5-3*"
+NGINX_ARM_VERSION="1.26.3-3*"
+NJS_ARM_VERSION="0.8.9-1*"
+PAM_ARM_VERSION="1:1.5.5-3*"
 ## Platform: Ubuntu Noble x86_64
-NGINX_VERSION="1.24.0-2*"
-NJS_VERSION="0.8.2-1*"
-PAM_VERSION="1:1.5.5-2*"
+NGINX_X86_VERSION="1.24.0-2*"
+NJS_X86_VERSION="0.8.2-1*"
+PAM_X86_VERSION="1:1.5.5-2*"
+# NGINX_VERSION, NJS_VERSION, and PAM_VERSION are picked from the pins
+# above by select_platform_versions()
 
 # Exit immediately if a command exits with a non-zero status
 set -e
@@ -53,6 +54,36 @@ install_and_pin() {
 
 wait_for_mongodb() {
   until bash -c '</dev/tcp/localhost/27017' 2>/dev/null; do sleep 1; done
+}
+
+# Nginx/NJS/PAM pins track the distro release, so match the exact
+# os/codename/arch combo and refuse to guess on anything unlisted.
+select_platform_versions() {
+  local os_id codename arch
+  os_id=$(. /etc/os-release && echo "$ID")
+  codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+  arch=$(dpkg --print-architecture)
+
+  case "${os_id}/${codename}/${arch}" in
+    debian/trixie/arm64 )  # Raspberry Pi 5
+      NGINX_VERSION="${NGINX_ARM_VERSION}"
+      NJS_VERSION="${NJS_ARM_VERSION}"
+      PAM_VERSION="${PAM_ARM_VERSION}"
+      ;;
+    ubuntu/noble/amd64 )
+      NGINX_VERSION="${NGINX_X86_VERSION}"
+      NJS_VERSION="${NJS_X86_VERSION}"
+      PAM_VERSION="${PAM_X86_VERSION}"
+      ;;
+    * )
+      echo "❌ Unsupported platform: ${os_id}/${codename}/${arch}"
+      echo "   Add its version pins to select_platform_versions() in bootstrap.sh."
+      echo "   Find available versions with: apt-cache madison nginx ${NJS_PACKAGE} ${PAM_PACKAGE}"
+      exit 1
+      ;;
+  esac
+
+  log "Detected platform ${os_id}/${codename}/${arch}: nginx=${NGINX_VERSION} njs=${NJS_VERSION} pam=${PAM_VERSION}"
 }
 
 # --- Core Setup Steps ---
@@ -107,6 +138,7 @@ setup_docker() {
 setup_nginx() {
   log "Setting up Nginx..."
 
+  select_platform_versions
   install_and_pin "nginx" "${NGINX_VERSION}"
   install_and_pin "${NJS_PACKAGE}" "${NJS_VERSION}"
 
