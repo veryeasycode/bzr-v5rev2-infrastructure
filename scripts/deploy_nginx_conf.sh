@@ -20,9 +20,18 @@ if [ -f .env ]; then
   done < .env
 fi
 
+# The cloud server serves the EMC API from its local upstream; every other
+# server forwards it to the cloud (proxying to itself would loop forever)
+if [ "$SERVER_NAME" = "$CLOUD_SERVER_NAME" ]; then
+  EMC_API_SNIPPET="emc_local.conf"
+else
+  EMC_API_SNIPPET="emc_cloud.conf"
+fi
+
 # Deploy configs
 cp -rf templates/nginx/* /etc/nginx
 sed -i "s|{{JWT_TOKEN}}|$JWT_SECRET|g" /etc/nginx/njs/bzr_v5_jwt_decoder.js
+sed -i "s|{{CLOUD_SERVER_NAME}}|$CLOUD_SERVER_NAME|g" /etc/nginx/snippets/emc_cloud.conf
 sed -i \
 -e "s|{{SERVICE_AUTHENTICATOR_PORT}}|$SERVICE_AUTHENTICATOR_PORT|g" \
 -e "s|{{SERVICE_FUNCTIONS_PORT}}|$SERVICE_FUNCTIONS_PORT|g" \
@@ -41,6 +50,7 @@ sed -i \
 -e "s|{{SERVICE_RESERVATION_API_PORT}}|$SERVICE_RESERVATION_API_PORT|g" \
 -e "s|{{SERVICE_RESERVATION_WEB_BACKOFFICE_PORT}}|$SERVICE_RESERVATION_WEB_BACKOFFICE_PORT|g" \
 -e "s|{{SERVICE_RESERVATION_WEB_FORM_PORT}}|$SERVICE_RESERVATION_WEB_FORM_PORT|g" \
+-e "s|{{EMC_API_SNIPPET}}|$EMC_API_SNIPPET|g" \
 /etc/nginx/sites-available/bzr_v5.conf
 ln -s /etc/nginx/sites-available/bzr_v5.conf /etc/nginx/conf.d/bzr_v5.conf
 
