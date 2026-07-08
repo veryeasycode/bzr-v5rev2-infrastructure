@@ -66,14 +66,14 @@ select_platform_versions() {
 
   case "${os_id}/${codename}/${arch}" in
     debian/trixie/arm64 )  # Raspberry Pi 5
-      NGINX_VERSION="${NGINX_ARM_VERSION}"
-      NJS_VERSION="${NJS_ARM_VERSION}"
-      PAM_VERSION="${PAM_ARM_VERSION}"
+      NGINX_VERSION="${NGINX_ARM_VERSION:?not set}"
+      NJS_VERSION="${NJS_ARM_VERSION:?not set}"
+      PAM_VERSION="${PAM_ARM_VERSION:?not set}"
       ;;
     ubuntu/noble/amd64 )
-      NGINX_VERSION="${NGINX_X86_VERSION}"
-      NJS_VERSION="${NJS_X86_VERSION}"
-      PAM_VERSION="${PAM_X86_VERSION}"
+      NGINX_VERSION="${NGINX_X86_VERSION:?not set}"
+      NJS_VERSION="${NJS_X86_VERSION:?not set}"
+      PAM_VERSION="${PAM_X86_VERSION:?not set}"
       ;;
     * )
       echo "❌ Unsupported platform: ${os_id}/${codename}/${arch}"
