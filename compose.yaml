@@ -202,7 +202,7 @@ services:
     env_file: .env
     environment:
       BASE_URL: https://${SERVER_NAME}/emc/api
-      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/e-menu-cloud?authSource=admin&directConnection=true
+      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
       DOMAIN_NAME: https://${SERVER_NAME}
       PORT: 80
       LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN}
