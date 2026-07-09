@@ -7,6 +7,9 @@ services:
     ports:
       - ${REDIS_PORT}:6379
     entrypoint: redis-server --requirepass ${REDIS_PASSWORD}
+    env_file:
+      - .env
+      - .env.versions
 # Core Services
   functions:
     container_name: functions
@@ -23,7 +26,9 @@ services:
     volumes:
       - /var/www/bzr_v5/static:/usr/bizarre-functions/upload
       - /var/www/bzr_v5/log:/usr/bizarre-functions/log
-    env_file: .env
+    env_file:
+      - .env
+      - .env.versions
     environment:
       PORT: 80
       BASE_URL: /api
@@ -47,7 +52,9 @@ services:
     restart: always
     extra_hosts:
       host.docker.internal: host-gateway
-    env_file: .env
+    env_file:
+      - .env
+      - .env.versions
     environment:
       MONGO_HOST: host.docker.internal
       REDIS_HOST: redis
@@ -63,7 +70,9 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_MONGOSTREAM_PORT}:80
-    env_file: .env
+    env_file:
+      - .env
+      - .env.versions
     environment:
       PORT: 80
       NODE_ENV: production
@@ -84,7 +93,9 @@ services:
     volumes:
       - /var/www/bzr_v5/static:/app/src/recognition/images
       - /var/www/bzr_v5/log:/usr/bizarre-functions/log
-    env_file: .env
+    env_file:
+      - .env
+      - .env.versions
     environment:
       PORT: 80
       FLASK_ENV: production
@@ -102,6 +113,9 @@ services:
     restart: always
     ports:
       - ${SERVICE_BACKOFFICE_PORT}:80
+    env_file:
+      - .env
+      - .env.versions
   backoffice2_api:
     container_name: backoffice2_api
     profiles:
@@ -112,6 +126,9 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_BACKOFFICE2_API_PORT}:3000
+    env_file:
+      - .env
+      - .env.versions
     environment:
       AUTHENTICATOR_BASE_URL: http://authenticator/v4/auth
       JWT_SECRET: ${JWT_SECRET}
@@ -126,6 +143,9 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_BACKOFFICE2_WEB_PORT}:80
+    env_file:
+      - .env
+      - .env.versions
     environment:
       API_URL: /bo/api
       FUNCTION_BASE_URL: /api
@@ -140,7 +160,9 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_EDC_API_PORT}:80
-    env_file: .env
+    env_file:
+      - .env
+      - .env.versions
     environment:
       PORT: 80
       MONGO_HOST: host.docker.internal
@@ -152,6 +174,9 @@ services:
     restart: always
     ports:
       - ${SERVICE_EDC_WEB_PORT}:80
+    env_file:
+      - .env
+      - .env.versions
   line_menu_bot:
     container_name: line_menu_bot
     profiles:
@@ -165,6 +190,9 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_LINE_MENU_BOT_PORT}:3000
+    env_file:
+      - .env
+      - .env.versions
     environment:
       PREFIX: /line-menu-bot
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:${REDIS_PORT}
@@ -186,7 +214,9 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_MESSAGE_GATEWAY_PORT}:3000
-    env_file: .env
+    env_file:
+      - .env
+      - .env.versions
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:${REDIS_PORT}
   line_menu_api:
@@ -199,7 +229,9 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_LINE_MENU_API_PORT}:80
-    env_file: .env
+    env_file:
+      - .env
+      - .env.versions
     environment:
       BASE_URL: https://${SERVER_NAME}/emc/api
       DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
@@ -218,6 +250,9 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_LINE_MENU_WEB_PORT}:80
+    env_file:
+      - .env
+      - .env.versions
     environment:
       API_URL: https://${SERVER_NAME}/emc/api
       IMG_PREFIX: https://${SERVER_NAME}/emc/storage/
@@ -234,6 +269,9 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_LINE_MENU_WEB_LITE_PORT}:80
+    env_file:
+      - .env
+      - .env.versions
     environment:
       API_URL: https://${SERVER_NAME}/emc/api
       IMG_PREFIX: https://${SERVER_NAME}/emc/storage/
@@ -247,6 +285,9 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_LINE_DELIVERY_WEB_PORT}:80
+    env_file:
+      - .env
+      - .env.versions
     environment:
       API_URL: https://${SERVER_NAME}/emc/api
       IMG_PREFIX: https://${SERVER_NAME}/emc/storage/
@@ -258,5 +299,8 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_LINE_BINGO_WEB_PORT}:80
+    env_file:
+      - .env
+      - .env.versions
     environment:
       API_URL: https://${SERVER_NAME}/emc/api
