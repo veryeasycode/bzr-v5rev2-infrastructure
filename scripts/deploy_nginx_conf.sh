@@ -50,6 +50,7 @@ sed -i \
 -e "s|{{SERVICE_RESERVATION_API_PORT}}|$SERVICE_RESERVATION_API_PORT|g" \
 -e "s|{{SERVICE_RESERVATION_WEB_BACKOFFICE_PORT}}|$SERVICE_RESERVATION_WEB_BACKOFFICE_PORT|g" \
 -e "s|{{SERVICE_RESERVATION_WEB_FORM_PORT}}|$SERVICE_RESERVATION_WEB_FORM_PORT|g" \
+-e "s|{{SERVICE_LINE_BINGO_WEB_PORT}}|$SERVICE_LINE_BINGO_WEB_PORT|g" \
 -e "s|{{EMC_API_SNIPPET}}|$EMC_API_SNIPPET|g" \
 /etc/nginx/sites-available/bzr_v5.conf
 ln -s /etc/nginx/sites-available/bzr_v5.conf /etc/nginx/conf.d/bzr_v5.conf
