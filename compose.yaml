@@ -251,3 +251,12 @@ services:
       API_URL: https://${SERVER_NAME}/emc/api
       IMG_PREFIX: https://${SERVER_NAME}/emc/storage/
       MESSAGE_GATEWAY_URL: https://${SERVER_NAME}/message-gateway
+  line_bingo_web:
+    image: ghcr.io/veryeasycode/line-bingo-web:${SERVICE_LINE_BINGO_WEB_VERSION}
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - ${SERVICE_LINE_BINGO_WEB_PORT}:80
+    environment:
+      API_URL: https://${SERVER_NAME}/emc/api
