@@ -266,6 +266,7 @@ services:
     environment:
       API_URL: https://${SERVER_NAME}/emc/api
       IMG_PREFIX: https://${SERVER_NAME}/emc/storage/
+      DELIVERY_WEB_URL: https://${SERVER_NAME}/emc-delivery
   line_delivery_web:
     container_name: line_delivery_web
     profiles:
