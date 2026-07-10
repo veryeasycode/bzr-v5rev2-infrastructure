@@ -52,13 +52,26 @@ Deploys `templates/pam.d/` and grants `www-data` read access to `/etc/shadow` vi
 
 ## Services (compose.yaml)
 
-Core and cloud services run via Docker Compose with profiles. Ports and secrets come from `.env`. See [compose.yaml](compose.yaml) for the full service list.
+Core and cloud services run via Docker Compose with profiles. Ports and secrets come from `.env`; service image versions come from `.env.versions`, which is tracked in git so version bumps are visible in history.
+
+Compose only auto-loads `.env`, so **every** compose command must pass both env files explicitly:
+
+```bash
+docker compose --env-file .env --env-file .env.versions up -d
+docker compose --env-file .env --env-file .env.versions pull
+docker compose --env-file .env --env-file .env.versions down
+```
+
+> **⚠️ Both flags are always required.** Passing any `--env-file` disables the automatic loading of `.env`, so omitting it leaves ports and secrets unset. Omitting `.env.versions` leaves every image tag blank. Keep `.env` first so later files win on conflicts. (`COMPOSE_ENV_FILES` inside `.env` does not work — Compose must know the file list *before* it reads `.env`.)
+
+See [compose.yaml](compose.yaml) for the full service list.
 
 ## Repository Layout
 
 ```
 bootstrap.sh                  # main entry point
 compose.yaml                  # Docker Compose service definitions
+.env.versions                 # service image versions (git-tracked; pass via --env-file)
 scripts/
   deploy_nginx_conf.sh        # Nginx config deploy (templates + .env substitution)
   create_mongodb_user.js      # mongosh: create admin user
