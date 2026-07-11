@@ -277,7 +277,6 @@ services:
       - .env # TODO: to be removed
     environment:
       API_URL: https://${SERVER_NAME}/emc/api
-      IMG_PREFIX: https://${SERVER_NAME}/emc/storage/
       MESSAGE_GATEWAY_URL: https://${SERVER_NAME}/message-gateway
   line_bingo_web:
     image: ghcr.io/veryeasycode/line-bingo-web:${SERVICE_LINE_BINGO_WEB_VERSION}
