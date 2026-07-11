@@ -77,7 +77,6 @@ services:
       - .env # TODO: to be removed
     environment:
       PORT: 80
-      NODE_ENV: production
       MONGO_HOST: host.docker.internal
       REDIS_HOST: redis
   authenticator:
@@ -228,9 +227,7 @@ services:
     environment:
       BASE_URL: https://${SERVER_NAME}/emc/api
       DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
-      DOMAIN_NAME: https://${SERVER_NAME}
       PORT: 80
-      LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN}
     volumes:
       - /var/www/bzr_v5/emc/storage:/app/storage
   line_menu_web:
@@ -248,7 +245,6 @@ services:
     environment:
       API_URL: https://${SERVER_NAME}/emc/api
       IMG_PREFIX: https://${SERVER_NAME}/emc/storage/
-      SITE_URL: https://${SERVER_NAME}/
       MESSAGE_GATEWAY_URL: https://${SERVER_NAME}/message-gateway
       DELIVERY_WEB_URL: https://${SERVER_NAME}/emc-delivery
   line_menu_web_lite:
