@@ -195,6 +195,21 @@ services:
       BIZARRE_STREAM_URL: ws://mongostream
       DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
       EDC_URL: http://edc_api/edc
+  confirm_pending_bot:
+    container_name: confirm_pending_bot
+    profiles:
+      - core-services
+    depends_on:
+      - edc_api
+    image: ghcr.io/veryeasycode/confirm-pending-bot:${SERVICE_CONFIRM_PENDING_BOT_VERSION}
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    env_file:
+      - .env # TODO: to be removed
+    environment:
+      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
+      EDC_URL: http://edc_api/edc
 # Cloud Services
   message_gateway:
     container_name: message_gateway
