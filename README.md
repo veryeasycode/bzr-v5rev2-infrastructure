@@ -64,7 +64,9 @@ docker compose --env-file .env --env-file .env.versions down
 
 > **⚠️ Both flags are always required.** Passing any `--env-file` disables the automatic loading of `.env`, so omitting it leaves ports and secrets unset. Omitting `.env.versions` leaves every image tag blank. Keep `.env` first so later files win on conflicts. (`COMPOSE_ENV_FILES` inside `.env` does not work — Compose must know the file list *before* it reads `.env`.)
 
-See [compose.yaml](compose.yaml) for the full service list.
+See [compose.yaml](compose.yaml) for the full service list. Every service declares its own
+`environment:` block — there is no `env_file:`, so `.env` supplies only the values that
+`compose.yaml` interpolates plus what `bootstrap.sh` and `deploy_nginx_conf.sh` read directly.
 
 ## Repository Layout
 
