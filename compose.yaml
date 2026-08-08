@@ -292,7 +292,6 @@ services:
       - .env # TODO: to be removed
     environment:
       API_URL: https://${SERVER_NAME}/emc/api
-      IMG_PREFIX: https://${SERVER_NAME}/emc/storage/
       MESSAGE_GATEWAY_URL: https://${SERVER_NAME}/message-gateway
   line_bingo_web:
     container_name: line_bingo_web
