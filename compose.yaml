@@ -23,8 +23,6 @@ services:
     volumes:
       - /var/www/bzr_v5/static:/usr/bizarre-functions/upload
       - /var/www/bzr_v5/log:/usr/bizarre-functions/log
-    env_file:
-      - .env # TODO: to be removed
     environment:
       # Application
       PORT: 80
@@ -56,11 +54,19 @@ services:
     restart: always
     extra_hosts:
       host.docker.internal: host-gateway
-    env_file:
-      - .env # TODO: to be removed
     environment:
+      # MongoDB
       MONGO_HOST: host.docker.internal
+      MONGO_PORT: ${MONGO_PORT}
+      MONGO_USERNAME: ${MONGO_USERNAME}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_AUTH_DB: admin
+      MONGO_DB: ${MONGO_DB}
+      MONGO_REPLICA_SET: ${MONGO_REPLICA_SET}
+      # Redis
       REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
   mongostream:
     container_name: mongostream
     profiles:
@@ -73,12 +79,21 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_MONGOSTREAM_PORT}:80
-    env_file:
-      - .env # TODO: to be removed
     environment:
+      # Application
       PORT: 80
+      # MongoDB
       MONGO_HOST: host.docker.internal
+      MONGO_PORT: ${MONGO_PORT}
+      MONGO_USERNAME: ${MONGO_USERNAME}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_AUTH_DB: admin
+      MONGO_DB: ${MONGO_DB}
+      MONGO_REPLICA_SET: ${MONGO_REPLICA_SET}
+      # Redis
       REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
   authenticator:
     container_name: authenticator
     profiles:
@@ -94,16 +109,25 @@ services:
     volumes:
       - /var/www/bzr_v5/static:/app/src/recognition/images
       - /var/www/bzr_v5/log:/usr/bizarre-functions/log
-    env_file:
-      - .env # TODO: to be removed
     environment:
+      # Application
       PORT: 80
       FLASK_ENV: production
+      JWT_SECRET: ${JWT_SECRET}
+      CONFIDENT_LEVEL: 0.6
+      # MongoDB
       MONGO_HOST: host.docker.internal
+      MONGO_PORT: ${MONGO_PORT}
+      MONGO_USERNAME: ${MONGO_USERNAME}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_AUTH_DB: admin
+      MONGO_DB: ${MONGO_DB}
       MONGO_USER_COLLECTION: _users
       MONGO_USER_ENCODING_COLLECTION: user_encoding
-      CONFIDENT_LEVEL: 0.6
+      # Redis
       REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_EXPIRATION_DAYS: 30
   backoffice:
     container_name: backoffice
@@ -113,8 +137,6 @@ services:
     restart: always
     ports:
       - ${SERVICE_BACKOFFICE_PORT}:80
-    env_file:
-      - .env # TODO: to be removed
   backoffice2_api:
     container_name: backoffice2_api
     profiles:
@@ -125,11 +147,11 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_BACKOFFICE2_API_PORT}:3000
-    env_file:
-      - .env # TODO: to be removed
     environment:
+      # Application
       AUTHENTICATOR_BASE_URL: http://authenticator/v4/auth
       JWT_SECRET: ${JWT_SECRET}
+      # MongoDB
       DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
   backoffice2_web:
     container_name: backoffice2_web
@@ -141,9 +163,8 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_BACKOFFICE2_WEB_PORT}:80
-    env_file:
-      - .env # TODO: to be removed
     environment:
+      # Application
       API_URL: /bo/api
       FUNCTION_BASE_URL: /api
       LINE_MENU_API_URL: https://${CLOUD_SERVER_NAME}/emc/api/
@@ -157,11 +178,17 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_EDC_API_PORT}:80
-    env_file:
-      - .env # TODO: to be removed
     environment:
+      # Application
       PORT: 80
+      # MongoDB
       MONGO_HOST: host.docker.internal
+      MONGO_PORT: ${MONGO_PORT}
+      MONGO_USERNAME: ${MONGO_USERNAME}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_AUTH_DB: admin
+      MONGO_DB: ${MONGO_DB}
+      MONGO_REPLICA_SET: ${MONGO_REPLICA_SET}
   edc_web:
     container_name: edc_web
     profiles:
@@ -170,8 +197,6 @@ services:
     restart: always
     ports:
       - ${SERVICE_EDC_WEB_PORT}:80
-    env_file:
-      - .env # TODO: to be removed
   line_menu_bot:
     container_name: line_menu_bot
     profiles:
@@ -185,16 +210,18 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_LINE_MENU_BOT_PORT}:3000
-    env_file:
-      - .env # TODO: to be removed
     environment:
+      # Application
       PREFIX: /line-menu-bot
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:${REDIS_PORT}
       MESSAGE_GATEWAY_URL: https://${CLOUD_SERVER_NAME}
       MESSAGE_GATEWAY_HANDSHAKE_PATH: /message-gateway/socket.io
       BIZARRE_STREAM_URL: ws://mongostream
-      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
       EDC_URL: http://edc_api/edc
+      LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN}
+      # MongoDB
+      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
+      # Redis
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:${REDIS_PORT}
   confirm_pending_bot:
     container_name: confirm_pending_bot
     profiles:
@@ -205,11 +232,11 @@ services:
     restart: always
     extra_hosts:
       host.docker.internal: host-gateway
-    env_file:
-      - .env # TODO: to be removed
     environment:
-      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
+      # Application
       EDC_URL: http://edc_api/edc
+      # MongoDB
+      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
 # Cloud Services
   message_gateway:
     container_name: message_gateway
@@ -223,9 +250,8 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_MESSAGE_GATEWAY_PORT}:3000
-    env_file:
-      - .env # TODO: to be removed
     environment:
+      # Redis
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:${REDIS_PORT}
   line_menu_api:
     container_name: line_menu_api
@@ -237,12 +263,13 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_LINE_MENU_API_PORT}:80
-    env_file:
-      - .env # TODO: to be removed
     environment:
-      BASE_URL: https://${SERVER_NAME}/emc/api
-      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
+      # Application
       PORT: 80
+      BASE_URL: https://${SERVER_NAME}/emc/api
+      JWT_SECRET: ${JWT_SECRET}
+      # MongoDB
+      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
     volumes:
       - /var/www/bzr_v5/emc/storage:/app/storage
   line_menu_web:
@@ -255,9 +282,8 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_LINE_MENU_WEB_PORT}:80
-    env_file:
-      - .env # TODO: to be removed
     environment:
+      # Application
       API_URL: https://${SERVER_NAME}/emc/api
       IMG_PREFIX: https://${SERVER_NAME}/emc/storage/
       MESSAGE_GATEWAY_URL: https://${SERVER_NAME}/message-gateway
@@ -272,9 +298,8 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_LINE_MENU_WEB_LITE_PORT}:80
-    env_file:
-      - .env # TODO: to be removed
     environment:
+      # Application
       API_URL: https://${SERVER_NAME}/emc/api
       IMG_PREFIX: https://${SERVER_NAME}/emc/storage/
       DELIVERY_WEB_URL: https://${SERVER_NAME}/emc-delivery
@@ -288,9 +313,8 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_LINE_DELIVERY_WEB_PORT}:80
-    env_file:
-      - .env # TODO: to be removed
     environment:
+      # Application
       API_URL: https://${SERVER_NAME}/emc/api
       MESSAGE_GATEWAY_URL: https://${SERVER_NAME}/message-gateway
   line_bingo_web:
@@ -303,7 +327,6 @@ services:
       host.docker.internal: host-gateway
     ports:
       - ${SERVICE_LINE_BINGO_WEB_PORT}:80
-    env_file:
-      - .env # TODO: to be removed
     environment:
+      # Application
       API_URL: https://${SERVER_NAME}/emc/api
