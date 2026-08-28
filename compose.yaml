@@ -268,6 +268,18 @@ services:
       PORT: 80
       BASE_URL: https://${SERVER_NAME}/emc/api
       JWT_SECRET: ${JWT_SECRET}
+      # Clink wallet
+      #
+      # Absent values are tolerated: the service boots without them and only
+      # fails when a store actually has the wallet switched on, which is what
+      # lets every deployment that does not use Clink carry on unchanged.
+      # The redirect URI is not here — it is derived from BASE_URL above, so
+      # the two can never drift.
+      CLINK_CLIENT_ID: ${CLINK_CLIENT_ID}
+      CLINK_CLIENT_SECRET: ${CLINK_CLIENT_SECRET}
+      CLINK_ENCRYPTION_KEY: ${CLINK_ENCRYPTION_KEY}
+      CLINK_CUSTOMER_BASE_URL: ${CLINK_CUSTOMER_BASE_URL}
+      CLINK_MERCHANT_API_BASE_URL: ${CLINK_MERCHANT_API_BASE_URL}
       # MongoDB
       DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
     volumes:
