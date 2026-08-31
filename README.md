@@ -6,15 +6,23 @@ Infrastructure bootstrap and deployment scripts for the BZR v5 platform. Install
 
 | Platform | Notes |
 |---|---|
-| Raspberry Pi 5 — Debian 13 (Trixie) arm64 | Default version config. MongoDB installs from the Ubuntu Jammy repo (MongoDB publishes no Debian arm64 packages). |
-| Ubuntu 22.04 (Jammy) x86_64 | Uncomment the Jammy version block in `bootstrap.sh` before running. |
+| Raspberry Pi 5 — Debian 13 (Trixie) arm64 | MongoDB installs from the Ubuntu Jammy repo (MongoDB publishes no Debian arm64 packages). Docker installs from the Bookworm repo (no Trixie release yet). |
+| Ubuntu 24.04 (Noble) x86_64 | |
 
-Package versions are pinned in the **Global Configuration** section at the top of [bootstrap.sh](bootstrap.sh). Switch platforms by commenting/uncommenting the matching `NGINX_VERSION` / `NJS_VERSION` block.
+The platform is **detected automatically** from `/etc/os-release` and `dpkg --print-architecture`
+— nothing to comment or uncomment. `select_platform_versions()` in [bootstrap.sh](bootstrap.sh)
+matches the exact `os/codename/arch` triple and *refuses to guess* on anything unlisted, because
+the Nginx/NJS/PAM pins track the distro release and a mismatched pin fails to install.
+
+To add a platform, add its case to `select_platform_versions()` with pins from
+`apt-cache madison nginx libnginx-mod-http-js libnginx-mod-http-auth-pam`. All version pins live
+in the **Global Configuration** block at the top of the script.
 
 ## Prerequisites
 
 1. A `.env` file in the repository root — copy from [.env.example](.env.example) and fill in the secrets (`MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_REPLICA_SET`, `JWT_SECRET`, service ports, …).
-2. TLS certificates at `certs/certificate.crt` and `certs/private.key` (required by the Nginx deploy step).
+2. TLS certificates at `certs/certificate.crt` and `certs/private.key`. The Nginx deploy step
+   refuses to run without them — see [Nginx configuration](#nginx-configuration).
 3. A sudo-capable user.
 
 ## Usage
@@ -33,8 +41,9 @@ Package versions are pinned in the **Global Configuration** section at the top o
 ### Docker
 Adds the official Docker apt repo (Trixie falls back to the Bookworm repo), installs and pins `docker-ce`/`docker-ce-cli`, enables the service, and adds `www-data` to the `docker` group.
 
-### Nginx + NJS
-Installs and pins `nginx` and `libnginx-mod-http-js` from the distro repos, then enables the service. Configuration is deployed separately by `scripts/deploy_nginx_conf.sh`, which substitutes service ports and the JWT secret from `.env` into the templates under `templates/nginx/`.
+### Nginx + NJS + PAM
+Installs and pins `nginx`, `libnginx-mod-http-js` (NJS) and `libnginx-mod-http-auth-pam` from the
+distro repos, then enables the service. Configuration is deployed separately — see below.
 
 ### MongoDB 8.0
 Installs from the official MongoDB apt repo, then bootstraps security in three phases using the configs under `templates/mongodb/`:
@@ -49,6 +58,57 @@ Each restart is guarded by a TCP readiness probe on port 27017 before any `mongo
 
 ### PAM (full setup only)
 Deploys `templates/pam.d/` and grants `www-data` read access to `/etc/shadow` via the `shadow` group, enabling Nginx PAM authentication.
+
+## Nginx configuration
+
+Deployed by `scripts/deploy_nginx_conf.sh`, which is idempotent and safe to re-run
+(`./bootstrap.sh -r`). In order, it:
+
+1. **Preflights** `.env`, `certs/certificate.crt`, `certs/private.key` and `templates/nginx/`.
+   If any is missing it exits *before* touching the running configuration.
+2. Copies `templates/nginx/` into `/etc/nginx/` and substitutes every `{{PLACEHOLDER}}` from
+   `.env` — service ports, `CLOUD_SERVER_NAME`, and the `JWT_SECRET` baked into the NJS decoder.
+3. Symlinks the site into `/etc/nginx/conf.d/` (`nginx.conf` includes `conf.d/*.conf` only —
+   `sites-enabled/` is not used).
+4. Installs the certificates (`private.key` as mode 600).
+5. Runs **`nginx -t`** and only reloads if it passes. On failure it exits non-zero without
+   reloading: the running Nginx keeps serving the previous configuration, but the files on disk
+   are broken and must be fixed before Nginx restarts for any reason.
+
+### Snippets
+
+| Snippet | Purpose |
+|---|---|
+| `proxy_headers.conf` | The one proxy header set — include it in **every** proxying location. Carries `Host`, `X-Real-IP`, `X-Forwarded-For` and the WebSocket upgrade headers. |
+| `emc_local.conf` / `emc_cloud.conf` | The two halves of the `/emc/api/` switch (below). |
+| `cert_support.conf` | TLS certificate paths. |
+| `cors_support.conf` | Reflective CORS with credentials, plus the `OPTIONS` preflight short-circuit. |
+| `enable_pam.conf` | PAM basic-auth for `/auth/admin`, `/docker/` and `/edc/version`. |
+
+There is no separate "WebSocket" snippet. `proxy_headers.conf` sends the upgrade headers
+unconditionally, and the `$connection_upgrade` map in `nginx.conf` evaluates to an empty string
+for non-WebSocket requests — which Nginx omits. So the snippet is correct on plain HTTP routes
+too, and there is no per-route decision to get wrong.
+
+A location that proxies to a **different vhost** overrides `Host` with a single
+`set $forward_host <name>;` rather than re-declaring the header set. This matters:
+`proxy_set_header` inheritance is replace-all-or-nothing, so a location that declares any header
+of its own silently loses every inherited one.
+
+### The `/emc/api/` local-vs-cloud switch
+
+The EMC API lives on one designated cloud host. `deploy_nginx_conf.sh` picks the snippet by
+comparing two variables in `.env`:
+
+| Condition | Snippet | Behaviour |
+|---|---|---|
+| `SERVER_NAME` == `CLOUD_SERVER_NAME` | `emc_local.conf` | Serve from the local `line_menu_api` container. |
+| `SERVER_NAME` != `CLOUD_SERVER_NAME` | `emc_cloud.conf` | Forward to `CLOUD_SERVER_NAME` over HTTPS (a shop server proxying to itself would loop forever). |
+
+> **⚠️ Keep this consistent with `COMPOSE_PROFILES`.** Nothing enforces the pairing. The cloud
+> host needs `cloud-services` in its profiles, or `/emc/api/` returns 502. A shop host that
+> enables `cloud-services` runs a `line_menu_api` container that Nginx never routes to. And a
+> typo or case difference between the two names on the cloud host makes it proxy to *itself*.
 
 ## Services (compose.yaml)
 
@@ -71,17 +131,23 @@ See [compose.yaml](compose.yaml) for the full service list. Every service declar
 ## Repository Layout
 
 ```
-bootstrap.sh                  # main entry point
-compose.yaml                  # Docker Compose service definitions
-.env.versions                 # service image versions (git-tracked; pass via --env-file)
+bootstrap.sh                    # main entry point
+compose.yaml                    # Docker Compose service definitions
+.env.example                    # template for the untracked .env
+.env.versions                   # service image versions (git-tracked; pass via --env-file)
+certs/                          # TLS cert + key (untracked; supply per host)
 scripts/
-  deploy_nginx_conf.sh        # Nginx config deploy (templates + .env substitution)
-  create_mongodb_user.js      # mongosh: create admin user
-  init_mongodb_repset.js      # mongosh: initiate replica set
+  deploy_nginx_conf.sh          # Nginx config deploy (templates + .env substitution)
+  create_mongodb_user.js        # mongosh: create admin user
+  init_mongodb_repset.js        # mongosh: initiate replica set
 templates/
   mongodb/mongod-0{1,2,3}.conf  # three-phase MongoDB configs
-  nginx/                      # nginx.conf, site, snippets, NJS JWT decoder
-  pam.d/                      # PAM service definition
+  nginx/
+    nginx.conf                  # http block: resolver, log format, $connection_upgrade map
+    sites-available/bzr_v5.conf # upstreams + all routes
+    snippets/                   # see "Nginx configuration" above
+    njs/bzr_v5_jwt_decoder.js   # JWT verification for /api/ ($verify_jwt)
+  pam.d/                        # PAM service definition
 ```
 
 ## Uninstall behavior
