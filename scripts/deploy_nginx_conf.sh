@@ -1,12 +1,26 @@
 #!/bin/bash
 
+# Any failure here leaves nginx half-configured, so never continue past one.
+set -e
+
+# Paths below are relative to the repository root. bootstrap.sh already cd's there,
+# but the script must also survive being invoked directly from anywhere.
+cd "$(dirname "$0")/.."
+
+# Preflight: everything this script consumes must exist BEFORE it removes the
+# configuration and certificates currently serving traffic.
+for required in .env certs/certificate.crt certs/private.key templates/nginx; do
+  if [ ! -e "$required" ]; then
+    echo "❌ Missing $required — refusing to touch the running configuration." >&2
+    exit 1
+  fi
+done
+
 # Clean up files
 rm -f /etc/nginx/sites-enabled/default
 rm -f /etc/nginx/sites-enabled/bzr_v5.conf
 rm -f /etc/nginx/sites-available/bzr_v5.conf
 rm -f /etc/nginx/conf.d/bzr_v5.conf
-rm -f /etc/ssl/certificate.crt
-rm -f /etc/ssl/private/private.key
 
 # Load environment variables
 if [ -f .env ]; then
@@ -55,9 +69,19 @@ sed -i \
 /etc/nginx/sites-available/bzr_v5.conf
 ln -s /etc/nginx/sites-available/bzr_v5.conf /etc/nginx/conf.d/bzr_v5.conf
 
-# Deploy SSL
-cp certs/certificate.crt /etc/ssl/certificate.crt
-cp certs/private.key /etc/ssl/private/private.key
+# Deploy SSL. `install` overwrites in place and sets the mode explicitly, so the
+# private key is never briefly world-readable the way a bare `cp` leaves it.
+install -m 644 certs/certificate.crt /etc/ssl/certificate.crt
+install -m 600 certs/private.key /etc/ssl/private/private.key
+
+# Validate before reloading. A reload on a broken config is refused by nginx anyway,
+# but testing first turns a silent no-op into an explicit failure.
+if ! nginx -t; then
+  echo "❌ nginx -t failed. NOT reloading." >&2
+  echo "   The running nginx still serves the previous configuration, but the files" >&2
+  echo "   on disk are now broken — fix them before nginx restarts for any reason." >&2
+  exit 1
+fi
 
 # Reload service to apply new configuration
 systemctl reload nginx
