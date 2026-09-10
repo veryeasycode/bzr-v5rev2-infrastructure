@@ -24,6 +24,14 @@ in the **Global Configuration** block at the top of the script.
 2. TLS certificates at `certs/certificate.crt` and `certs/private.key`. The Nginx deploy step
    refuses to run without them — see [Nginx configuration](#nginx-configuration).
 3. A sudo-capable user.
+4. `docker login ghcr.io` done on the host, with a token carrying `read:packages`. Every service
+   image is private, so without it `docker compose pull` fails with `401 Unauthorized`. The
+   credential lands in `$HOME/.docker/config.json` of whichever user ran the login — it is **not**
+   shared between users, so log in as the user the deploy connects as. This is the one deploy
+   dependency that lives only on the host, which is why it is written down here.
+5. For a host that CI deploys to: `git config core.fileMode false` in the clone. Otherwise a
+   permission-bit difference counts as a local modification, and `git checkout` refuses to move to
+   a commit that also changes that file — which is a deploy failure with a confusing message.
 
 ## Usage
 
@@ -144,9 +152,9 @@ not in git.
 Only **released tags** belong in `.env.versions`, never a commit sha: a tester has to be able to
 name the version a bug was found on. A bug means a new patch release, not a sha deploy.
 
-The workflow, over SSH: check out the target commit, `docker login ghcr.io`, `compose config`,
-`compose pull`, `compose up -d`, prune images older than a week. `compose pull` is the gate — a
-tag that was bumped but never released fails there, while the running stack is still untouched.
+The workflow, over SSH: check out the target commit, `compose config`, `compose pull`,
+`compose up -d`, prune images older than a week. `compose pull` is the gate — a tag that was bumped
+but never released fails there, while the running stack is still untouched.
 
 What it deliberately does **not** do:
 
@@ -155,18 +163,26 @@ What it deliberately does **not** do:
 | Rollback | Accepted for Dev. Redeploy an earlier commit by hand (`workflow_dispatch` with a sha) — the image prune keeps a week of tags so this stays possible. |
 | `git clean -fd` / `git checkout -f` | `.env`, `.github_token` and `certs/` live in the deploy directory untracked. Cleaning loses the host's secrets and certificates for good. |
 | `--remove-orphans` | The host runs containers this compose file does not define; the flag would remove them. |
-| Reload Nginx | Writing `/etc/nginx` needs root, which the deploy user deliberately does not have. A PR that changes `templates/nginx/`, a service port, or `JWT_SECRET` still needs `sudo ./bootstrap.sh -r` on the host. |
+| Reload Nginx | Out of scope for a version deploy, by choice — keeping `/etc/nginx` writes out of CI means a bad template cannot take the site down unattended. A PR that changes `templates/nginx/`, a service port, or `JWT_SECRET` still needs `sudo ./bootstrap.sh -r` on the host. |
 | Edit `.env` | Host secrets are not in git and are never written by CI. New variables are added by hand, then `workflow_dispatch`. |
+| `docker login ghcr.io` | A host setup step, not a per-deploy one — see Prerequisites. The host already holds the credential; re-doing it every run would only add a second place for it to be wrong. |
 
-Host access comes from this repository's GitHub **secrets** — `SSH_HOST`, `SSH_PORT` (the Dev host
-does not use 22), `SSH_USERNAME`, `SSH_PRIVATE_KEY`, `GHCR_USERNAME`, `GHCR_TOKEN` — plus the
-`DEPLOY_DIR` and `COMPOSE_PROJECT_NAME` variables. Host, port and user are secrets rather than
-variables because this repository is public: its workflow logs are world-readable and only secrets
-are masked.
+Host access comes from the **`ngumv5-01` GitHub environment** on this repository: secrets
+`SSH_HOST`, `SSH_PORT` (the Dev host does not use 22), `SSH_USERNAME` and `SSH_PRIVATE_KEY`, plus a
+`DEPLOY_DIR` variable — and optionally `COMPOSE_PROJECT_NAME`, which the workflow defaults when
+unset. **Only a job that declares `environment:` can read them**, so a workflow without that line
+sees empty strings and fails at connect. Host, port and user are secrets rather than variables
+because this repository is public: its workflow logs are world-readable and only secrets are masked.
 
-The deploy user needs to be in the `docker` group (`bootstrap.sh` adds `www-data`, not the deploy
-user), needs its public key in `~/.ssh/authorized_keys`, and needs read access to `DEPLOY_DIR` —
-so the deploy directory cannot live under `/root`.
+CI connects **as `root`**, so `DEPLOY_DIR` may live under `/root` and neither `sudo` nor `docker`
+group membership is needed. `PermitRootLogin` defaults to `prohibit-password`, so a deploy key works
+with no `sshd` change — add its public half to `/root/.ssh/authorized_keys`.
+
+The trade is that `SSH_PRIVATE_KEY` is a root key, and the deploy runs a script that comes from the
+PR being deployed: anyone who can push a branch to this repository can run commands as root on the
+Dev host by editing this workflow in their own PR. Fork PRs are excluded by the job's `if:`. If that
+ever needs narrowing, add a required reviewer to the `ngumv5-01` environment rather than changing
+this file.
 
 ## Repository Layout
 
