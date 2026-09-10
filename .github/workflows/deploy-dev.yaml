@@ -39,6 +39,11 @@ jobs:
   deploy:
     name: Deploy to Dev
     runs-on: ubuntu-latest
+    # Named for the host it deploys. Every secret and variable below lives on this
+    # environment, and only a job that declares it can read them. Adding a required
+    # reviewer here is how to make deploys wait for approval, without touching this
+    # file.
+    environment: ngumv5-01
     # This repository is public. A PR from a fork receives no secrets, so it could
     # only ever produce a red run — skip it rather than fail it.
     if: >-
@@ -54,8 +59,6 @@ jobs:
           # project name to its working directory, so moving the deploy directory
           # would silently start a second stack and orphan the running one.
           COMPOSE_PROJECT: ${{ vars.COMPOSE_PROJECT_NAME || 'bzrv5_rev2' }}
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         with:
           # Host, port and user are secrets rather than variables on purpose:
           # workflow logs of a public repository are world-readable, and only
@@ -64,7 +67,7 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: DEPLOY_REF,DEPLOY_DIR,COMPOSE_PROJECT,GHCR_USERNAME,GHCR_TOKEN
+          envs: DEPLOY_REF,DEPLOY_DIR,COMPOSE_PROJECT
           script_stop: true
           script: |
             set -eu
@@ -97,10 +100,9 @@ jobs:
             git checkout --detach "$target"
             git --no-pager log -1 --format='Deploying %h — %s'
 
-            # Every service image is private on ghcr, and the host's only stored
-            # credential belongs to root. Log in per run instead of relying on it.
-            printf '%s' "$GHCR_TOKEN" \
-              | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+            # No `docker login` here: the host is already authenticated to ghcr.
+            # See the ghcr line in the README's Prerequisites — that login is a
+            # host setup step, not a per-deploy one.
 
             # Compose stops auto-loading `.env` as soon as any `--env-file` is
             # passed, so both files are always required: `.env` carries ports and
