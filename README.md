@@ -128,6 +128,46 @@ See [compose.yaml](compose.yaml) for the full service list. Every service declar
 `environment:` block — there is no `env_file:`, so `.env` supplies only the values that
 `compose.yaml` interpolates plus what `bootstrap.sh` and `deploy_nginx_conf.sh` read directly.
 
+## Deploying to Dev
+
+The Dev host is deployed **from this repository only**. Service repositories build and push
+images to ghcr and stop there; nothing but
+[`.github/workflows/deploy-dev.yaml`](.github/workflows/deploy-dev.yaml) touches the running
+stack. So what runs on Dev is exactly what `.env.versions` says on some commit here, and every
+change to the stack is visible in this repo's history.
+
+Bump `.env.versions` on a branch, open a PR into `dev`, and the workflow deploys that PR's head
+commit. Push again and it redeploys. `workflow_dispatch` re-runs a deploy without a new commit —
+which is what you want after adding a variable to the host's `.env` by hand, since that file is
+not in git.
+
+Only **released tags** belong in `.env.versions`, never a commit sha: a tester has to be able to
+name the version a bug was found on. A bug means a new patch release, not a sha deploy.
+
+The workflow, over SSH: check out the target commit, `docker login ghcr.io`, `compose config`,
+`compose pull`, `compose up -d`, prune images older than a week. `compose pull` is the gate — a
+tag that was bumped but never released fails there, while the running stack is still untouched.
+
+What it deliberately does **not** do:
+
+| Not done | Why |
+|---|---|
+| Rollback | Accepted for Dev. Redeploy an earlier commit by hand (`workflow_dispatch` with a sha) — the image prune keeps a week of tags so this stays possible. |
+| `git clean -fd` / `git checkout -f` | `.env`, `.github_token` and `certs/` live in the deploy directory untracked. Cleaning loses the host's secrets and certificates for good. |
+| `--remove-orphans` | The host runs containers this compose file does not define; the flag would remove them. |
+| Reload Nginx | Writing `/etc/nginx` needs root, which the deploy user deliberately does not have. A PR that changes `templates/nginx/`, a service port, or `JWT_SECRET` still needs `sudo ./bootstrap.sh -r` on the host. |
+| Edit `.env` | Host secrets are not in git and are never written by CI. New variables are added by hand, then `workflow_dispatch`. |
+
+Host access comes from this repository's GitHub **secrets** — `SSH_HOST`, `SSH_PORT` (the Dev host
+does not use 22), `SSH_USERNAME`, `SSH_PRIVATE_KEY`, `GHCR_USERNAME`, `GHCR_TOKEN` — plus the
+`DEPLOY_DIR` and `COMPOSE_PROJECT_NAME` variables. Host, port and user are secrets rather than
+variables because this repository is public: its workflow logs are world-readable and only secrets
+are masked.
+
+The deploy user needs to be in the `docker` group (`bootstrap.sh` adds `www-data`, not the deploy
+user), needs its public key in `~/.ssh/authorized_keys`, and needs read access to `DEPLOY_DIR` —
+so the deploy directory cannot live under `/root`.
+
 ## Repository Layout
 
 ```
@@ -136,6 +176,8 @@ compose.yaml                    # Docker Compose service definitions
 .env.example                    # template for the untracked .env
 .env.versions                   # service image versions (git-tracked; pass via --env-file)
 certs/                          # TLS cert + key (untracked; supply per host)
+.github/workflows/
+  deploy-dev.yaml               # Deploy to Dev (PR into `dev`, or manual dispatch)
 scripts/
   deploy_nginx_conf.sh          # Nginx config deploy (templates + .env substitution)
   create_mongodb_user.js        # mongosh: create admin user

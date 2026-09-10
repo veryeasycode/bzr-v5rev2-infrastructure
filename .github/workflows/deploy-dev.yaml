@@ -1,0 +1,129 @@
+name: Deploy to Dev
+
+# The Dev host is deployed from this repository only. Service repositories build
+# and push images to ghcr; nothing but this workflow touches the running stack.
+#
+# What gets deployed is whatever `.env.versions` says on the commit being
+# deployed, so every change to the Dev stack is a commit in this repo's history.
+# Only released tags belong in `.env.versions` — never a commit sha — so a tester
+# can always name the version a bug was found on.
+
+on:
+  # Opening (or pushing to) a PR into `dev` deploys that PR's head commit, so the
+  # stack can be exercised before the branch is merged. Concurrent PRs are
+  # last-writer-wins; that is accepted for Dev.
+  pull_request:
+    branches:
+      - dev
+    types:
+      - opened
+      - synchronize
+      - reopened
+  # Manual re-deploy: needed after adding a new variable to the host's `.env` by
+  # hand, since that file is not in git and no commit marks the change.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit-ish to deploy (branch, tag or full sha).
+        required: false
+        default: dev
+
+# Deploy one at a time, and never cancel one that is already running: an
+# interrupted `compose up -d` can leave the stack half-rolled with no rollback.
+# Queue instead of cancelling.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    # This repository is public. A PR from a fork receives no secrets, so it could
+    # only ever produce a red run — skip it rather than fail it.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.1
+        env:
+          DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.pull_request.head.sha }}
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
+          # Pinned, never derived from the directory name: Compose defaults the
+          # project name to its working directory, so moving the deploy directory
+          # would silently start a second stack and orphan the running one.
+          COMPOSE_PROJECT: ${{ vars.COMPOSE_PROJECT_NAME || 'bzrv5_rev2' }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        with:
+          # Host, port and user are secrets rather than variables on purpose:
+          # workflow logs of a public repository are world-readable, and only
+          # secrets are masked. The Dev host does not listen on port 22.
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: DEPLOY_REF,DEPLOY_DIR,COMPOSE_PROJECT,GHCR_USERNAME,GHCR_TOKEN
+          script_stop: true
+          script: |
+            set -eu
+
+            # A manual dispatch with the ref field cleared arrives empty rather
+            # than defaulted, so fall back here too.
+            DEPLOY_REF="${DEPLOY_REF:-dev}"
+
+            cd "$DEPLOY_DIR"
+
+            # Preflight. Bail out before anything is touched: `.env` holds the
+            # host's secrets and ports and is not in git, so a missing one cannot
+            # be recovered by the checkout below.
+            for required in .env .env.versions compose.yaml; do
+              if [ ! -f "$required" ]; then
+                echo "Missing $required in $DEPLOY_DIR — refusing to deploy." >&2
+                exit 1
+              fi
+            done
+
+            # Check out the commit we were asked to deploy. The repository is
+            # public, so this needs no credentials.
+            #
+            # Never `git clean -fd` or `git checkout -f` here: `.env`,
+            # `.github_token` and `certs/` live in this directory untracked and
+            # are not recoverable from git.
+            git fetch origin --prune --tags
+            target=$(git rev-parse --verify --quiet "${DEPLOY_REF}^{commit}" \
+              || git rev-parse --verify "origin/${DEPLOY_REF}^{commit}")
+            git checkout --detach "$target"
+            git --no-pager log -1 --format='Deploying %h — %s'
+
+            # Every service image is private on ghcr, and the host's only stored
+            # credential belongs to root. Log in per run instead of relying on it.
+            printf '%s' "$GHCR_TOKEN" \
+              | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+
+            # Compose stops auto-loading `.env` as soon as any `--env-file` is
+            # passed, so both files are always required: `.env` carries ports and
+            # secrets, `.env.versions` carries every image tag.
+            compose() {
+              docker compose -p "$COMPOSE_PROJECT" \
+                --env-file .env --env-file .env.versions "$@"
+            }
+
+            # Resolve the file, then fetch every image. This is the gate: a tag
+            # that was bumped in `.env.versions` but never released fails here,
+            # while the running stack is still untouched.
+            compose config --quiet
+            compose pull
+
+            # Past this line the stack changes, and there is no rollback.
+            #
+            # No `--remove-orphans`: the host runs containers that this compose
+            # file does not define, and the flag would remove them.
+            compose up -d
+
+            # Version-tagged pulls accumulate; the host's disk is small. Keep a
+            # week so a manual `up -d` on the previous tag stays possible.
+            docker image prune --all --force --filter until=168h
+
+            compose ps
