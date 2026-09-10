@@ -166,6 +166,7 @@ What it deliberately does **not** do:
 | Reload Nginx | Out of scope for a version deploy, by choice — keeping `/etc/nginx` writes out of CI means a bad template cannot take the site down unattended. A PR that changes `templates/nginx/`, a service port, or `JWT_SECRET` still needs `sudo ./bootstrap.sh -r` on the host. |
 | Edit `.env` | Host secrets are not in git and are never written by CI. New variables are added by hand, then `workflow_dispatch`. |
 | `docker login ghcr.io` | A host setup step, not a per-deploy one — see Prerequisites. The host already holds the credential; re-doing it every run would only add a second place for it to be wrong. |
+| Restore the previous commit after a failed deploy | The checkout happens before the `compose pull` gate, so a run that fails at the gate leaves the host checked out at the commit it could not deploy. The stack is untouched and the next deploy checks out over it, but a **manual** `compose up -d` on the host in the meantime would read the bad `.env.versions`. Deploy a good commit, or `git checkout --detach origin/dev`, before touching compose by hand. |
 
 Host access comes from the **`ngumv5-01` GitHub environment** on this repository: secrets
 `SSH_HOST`, `SSH_PORT` (the Dev host does not use 22), `SSH_USERNAME` and `SSH_PRIVATE_KEY`, plus a
