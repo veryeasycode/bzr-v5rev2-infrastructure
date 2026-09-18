@@ -3,3 +3,7 @@
 *.env.staging
 .DS_Store
 .claude
+
+# per-host, untracked
+.github_token
+certs/

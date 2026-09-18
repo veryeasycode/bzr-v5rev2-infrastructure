@@ -1,0 +1,78 @@
+name: Deploy to Dev
+
+on:
+  pull_request:
+    branches:
+      - dev
+    types:
+      - opened
+      - synchronize
+      - reopened
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit-ish to deploy (branch, tag or full sha).
+        required: false
+        default: dev
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    environment: ngumv5-01
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.1
+        env:
+          DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.pull_request.head.sha }}
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
+          COMPOSE_PROJECT: ${{ vars.COMPOSE_PROJECT_NAME || 'bzrv5_rev2' }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: DEPLOY_REF,DEPLOY_DIR,COMPOSE_PROJECT
+          script_stop: true
+          script: |
+            set -eu
+
+            DEPLOY_REF="${DEPLOY_REF:-dev}"
+
+            cd "$DEPLOY_DIR"
+
+            for required in .env .env.versions compose.yaml; do
+              if [ ! -f "$required" ]; then
+                echo "Missing $required in $DEPLOY_DIR — refusing to deploy." >&2
+                exit 1
+              fi
+            done
+
+            # never git clean / checkout -f: .env and certs/ are untracked
+            git fetch origin --prune --tags
+            target=$(git rev-parse --verify --quiet "${DEPLOY_REF}^{commit}" \
+              || git rev-parse --verify "origin/${DEPLOY_REF}^{commit}")
+            git checkout --detach "$target"
+            git --no-pager log -1 --format='Deploying %h — %s'
+
+            # any --env-file disables auto-loading .env
+            compose() {
+              docker compose -p "$COMPOSE_PROJECT" \
+                --env-file .env --env-file .env.versions "$@"
+            }
+
+            compose config --quiet
+            compose pull
+
+            compose up -d # no --remove-orphans: host runs other containers
+
+            docker image prune --all --force --filter until=168h
+
+            compose ps

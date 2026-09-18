@@ -28,7 +28,7 @@ services:
       PORT: 80
       BASE_URL: /api
       LOG_LEVEL: info
-      LOCAL_EMENU_CLOUD_URL: https://${SERVER_NAME}/emc/api/
+      LOCAL_EMENU_CLOUD_URL: http://line_menu_api/ # internal; see README
       LOCAL_EMENU_CLOUD_LINE_OA: https://${SERVER_NAME}/emc/
       CLOUD_EMENU_CLOUD_URL: https://${CLOUD_SERVER_NAME}/emc/api/
       CLOUD_EMENU_CLOUD_LINE_OA: https://${CLOUD_SERVER_NAME}/emc/
@@ -181,6 +181,7 @@ services:
     environment:
       # Application
       PORT: 80
+      PAYMENT_EXPIRES_IN_SECONDS: ${EDC_PAYMENT_EXPIRES_IN_SECONDS}
       # MongoDB
       MONGO_HOST: host.docker.internal
       MONGO_PORT: ${MONGO_PORT}
