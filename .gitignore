@@ -4,6 +4,6 @@
 .DS_Store
 .claude
 
-# per-host files in the deploy dir, never committed
+# per-host, untracked
 .github_token
 certs/

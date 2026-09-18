@@ -105,6 +105,9 @@ commit. Push again and it redeploys. `workflow_dispatch` re-runs a deploy withou
 which is what you want after adding a variable to the host's `.env` by hand, since that file is
 not in git.
 
+Deploys run one at a time and are queued, never cancelled — an interrupted `compose up -d` can
+leave the stack half-rolled. Concurrent PRs into `dev` are last-writer-wins, which is accepted for Dev.
+
 Only **released tags** belong in `.env.versions`, never a commit sha: a tester has to be able to
 name the version a bug was found on. A bug means a new patch release, not a sha deploy.
 

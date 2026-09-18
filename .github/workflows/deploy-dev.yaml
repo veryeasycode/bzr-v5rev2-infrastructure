@@ -1,21 +1,21 @@
-name: Deploy to Dev # see README: Deploying to Dev
+name: Deploy to Dev
 
 on:
-  pull_request: # deploys the PR head; concurrent PRs are last-writer-wins
+  pull_request:
     branches:
       - dev
     types:
       - opened
       - synchronize
       - reopened
-  workflow_dispatch: # redeploy after a hand edit to the host's .env
+  workflow_dispatch:
     inputs:
       ref:
         description: Commit-ish to deploy (branch, tag or full sha).
         required: false
         default: dev
 
-concurrency: # queue, never cancel a half-rolled compose up
+concurrency:
   group: deploy-dev
   cancel-in-progress: false
 
@@ -23,8 +23,8 @@ jobs:
   deploy:
     name: Deploy to Dev
     runs-on: ubuntu-latest
-    environment: ngumv5-01 # holds the host secrets/vars
-    if: >- # skip fork PRs, they get no secrets
+    environment: ngumv5-01
+    if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.pull_request.head.repo.full_name == github.repository
     steps:
@@ -35,7 +35,7 @@ jobs:
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
           COMPOSE_PROJECT: ${{ vars.COMPOSE_PROJECT_NAME || 'bzrv5_rev2' }}
         with:
-          host: ${{ secrets.SSH_HOST }} # secrets, not vars: public repo logs only mask secrets
+          host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -48,7 +48,6 @@ jobs:
 
             cd "$DEPLOY_DIR"
 
-            # preflight: .env is untracked and cannot be recovered by checkout
             for required in .env .env.versions compose.yaml; do
               if [ ! -f "$required" ]; then
                 echo "Missing $required in $DEPLOY_DIR — refusing to deploy." >&2
@@ -56,26 +55,24 @@ jobs:
               fi
             done
 
-            # never git clean / checkout -f: untracked .env, .github_token, certs/
+            # never git clean / checkout -f: .env and certs/ are untracked
             git fetch origin --prune --tags
             target=$(git rev-parse --verify --quiet "${DEPLOY_REF}^{commit}" \
               || git rev-parse --verify "origin/${DEPLOY_REF}^{commit}")
             git checkout --detach "$target"
             git --no-pager log -1 --format='Deploying %h — %s'
 
-            # passing any --env-file disables auto-loading .env, so pass both
+            # any --env-file disables auto-loading .env
             compose() {
               docker compose -p "$COMPOSE_PROJECT" \
                 --env-file .env --env-file .env.versions "$@"
             }
 
-            # gate: an unreleased tag fails pull before the stack is touched
             compose config --quiet
             compose pull
 
-            compose up -d # no rollback past here; no --remove-orphans (host runs other containers)
+            compose up -d # no --remove-orphans: host runs other containers
 
-            # keep a week of images so a manual rollback stays possible
             docker image prune --all --force --filter until=168h
 
             compose ps
