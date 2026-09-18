@@ -76,6 +76,22 @@ See [compose.yaml](compose.yaml) for the full service list. Every service declar
 `environment:` block — there is no `env_file:`, so `.env` supplies only the values that
 `compose.yaml` interpolates plus what `bootstrap.sh` and `deploy_nginx_conf.sh` read directly.
 
+`COMPOSE_PROJECT_NAME` is pinned in `.env` (and defaulted by the deploy workflow). Compose otherwise
+derives the project name from the directory it runs in, so moving or renaming the deploy directory
+would start a second stack and orphan the running containers.
+
+### Service URLs
+
+- **Server-to-server calls stay inside the compose network.** This host's nginx serves a
+  certificate signed by the platform's own CA, which containers cannot verify
+  (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`). So `LOCAL_EMENU_CLOUD_URL` is `http://line_menu_api/` — the
+  e-menu API listens on port 80 with no path prefix; `/emc/api` is added by nginx.
+- **URLs handed to the browser stay public** (`LOCAL_EMENU_CLOUD_LINE_OA` = `https://${SERVER_NAME}/emc/`),
+  since a phone has to reach them.
+- **`CLOUD_*` URLs only make sense once `CLOUD_SERVER_NAME` is a different host.** While it equals
+  `SERVER_NAME` they point back here and hit the same CA problem, so a single-host deployment must
+  sync e-menu with target `local`.
+
 ## Deploying to Dev
 
 The Dev host is deployed **from this repository only**. Service repositories build and push

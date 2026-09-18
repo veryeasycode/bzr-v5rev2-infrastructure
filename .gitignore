@@ -4,8 +4,6 @@
 .DS_Store
 .claude
 
-# Per-host files the deploy directory legitimately carries but git must never
-# see. They were previously untracked *and* unignored, which made them show up
-# as pending changes and put them one `git clean -fd` away from being lost.
+# per-host files in the deploy dir, never committed
 .github_token
 certs/

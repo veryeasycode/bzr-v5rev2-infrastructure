@@ -1,37 +1,21 @@
-name: Deploy to Dev
-
-# The Dev host is deployed from this repository only. Service repositories build
-# and push images to ghcr; nothing but this workflow touches the running stack.
-#
-# What gets deployed is whatever `.env.versions` says on the commit being
-# deployed, so every change to the Dev stack is a commit in this repo's history.
-# Only released tags belong in `.env.versions` — never a commit sha — so a tester
-# can always name the version a bug was found on.
+name: Deploy to Dev # see README: Deploying to Dev
 
 on:
-  # Opening (or pushing to) a PR into `dev` deploys that PR's head commit, so the
-  # stack can be exercised before the branch is merged. Concurrent PRs are
-  # last-writer-wins; that is accepted for Dev.
-  pull_request:
+  pull_request: # deploys the PR head; concurrent PRs are last-writer-wins
     branches:
       - dev
     types:
       - opened
       - synchronize
       - reopened
-  # Manual re-deploy: needed after adding a new variable to the host's `.env` by
-  # hand, since that file is not in git and no commit marks the change.
-  workflow_dispatch:
+  workflow_dispatch: # redeploy after a hand edit to the host's .env
     inputs:
       ref:
         description: Commit-ish to deploy (branch, tag or full sha).
         required: false
         default: dev
 
-# Deploy one at a time, and never cancel one that is already running: an
-# interrupted `compose up -d` can leave the stack half-rolled with no rollback.
-# Queue instead of cancelling.
-concurrency:
+concurrency: # queue, never cancel a half-rolled compose up
   group: deploy-dev
   cancel-in-progress: false
 
@@ -39,14 +23,8 @@ jobs:
   deploy:
     name: Deploy to Dev
     runs-on: ubuntu-latest
-    # Named for the host it deploys. Every secret and variable below lives on this
-    # environment, and only a job that declares it can read them. Adding a required
-    # reviewer here is how to make deploys wait for approval, without touching this
-    # file.
-    environment: ngumv5-01
-    # This repository is public. A PR from a fork receives no secrets, so it could
-    # only ever produce a red run — skip it rather than fail it.
-    if: >-
+    environment: ngumv5-01 # holds the host secrets/vars
+    if: >- # skip fork PRs, they get no secrets
       github.event_name == 'workflow_dispatch' ||
       github.event.pull_request.head.repo.full_name == github.repository
     steps:
@@ -55,15 +33,9 @@ jobs:
         env:
           DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.pull_request.head.sha }}
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
-          # Pinned, never derived from the directory name: Compose defaults the
-          # project name to its working directory, so moving the deploy directory
-          # would silently start a second stack and orphan the running one.
           COMPOSE_PROJECT: ${{ vars.COMPOSE_PROJECT_NAME || 'bzrv5_rev2' }}
         with:
-          # Host, port and user are secrets rather than variables on purpose:
-          # workflow logs of a public repository are world-readable, and only
-          # secrets are masked. The Dev host does not listen on port 22.
-          host: ${{ secrets.SSH_HOST }}
+          host: ${{ secrets.SSH_HOST }} # secrets, not vars: public repo logs only mask secrets
           username: ${{ secrets.SSH_USERNAME }}
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -72,15 +44,11 @@ jobs:
           script: |
             set -eu
 
-            # A manual dispatch with the ref field cleared arrives empty rather
-            # than defaulted, so fall back here too.
             DEPLOY_REF="${DEPLOY_REF:-dev}"
 
             cd "$DEPLOY_DIR"
 
-            # Preflight. Bail out before anything is touched: `.env` holds the
-            # host's secrets and ports and is not in git, so a missing one cannot
-            # be recovered by the checkout below.
+            # preflight: .env is untracked and cannot be recovered by checkout
             for required in .env .env.versions compose.yaml; do
               if [ ! -f "$required" ]; then
                 echo "Missing $required in $DEPLOY_DIR — refusing to deploy." >&2
@@ -88,44 +56,26 @@ jobs:
               fi
             done
 
-            # Check out the commit we were asked to deploy. The repository is
-            # public, so this needs no credentials.
-            #
-            # Never `git clean -fd` or `git checkout -f` here: `.env`,
-            # `.github_token` and `certs/` live in this directory untracked and
-            # are not recoverable from git.
+            # never git clean / checkout -f: untracked .env, .github_token, certs/
             git fetch origin --prune --tags
             target=$(git rev-parse --verify --quiet "${DEPLOY_REF}^{commit}" \
               || git rev-parse --verify "origin/${DEPLOY_REF}^{commit}")
             git checkout --detach "$target"
             git --no-pager log -1 --format='Deploying %h — %s'
 
-            # No `docker login` here: the host is already authenticated to ghcr.
-            # See the ghcr line in the README's Prerequisites — that login is a
-            # host setup step, not a per-deploy one.
-
-            # Compose stops auto-loading `.env` as soon as any `--env-file` is
-            # passed, so both files are always required: `.env` carries ports and
-            # secrets, `.env.versions` carries every image tag.
+            # passing any --env-file disables auto-loading .env, so pass both
             compose() {
               docker compose -p "$COMPOSE_PROJECT" \
                 --env-file .env --env-file .env.versions "$@"
             }
 
-            # Resolve the file, then fetch every image. This is the gate: a tag
-            # that was bumped in `.env.versions` but never released fails here,
-            # while the running stack is still untouched.
+            # gate: an unreleased tag fails pull before the stack is touched
             compose config --quiet
             compose pull
 
-            # Past this line the stack changes, and there is no rollback.
-            #
-            # No `--remove-orphans`: the host runs containers that this compose
-            # file does not define, and the flag would remove them.
-            compose up -d
+            compose up -d # no rollback past here; no --remove-orphans (host runs other containers)
 
-            # Version-tagged pulls accumulate; the host's disk is small. Keep a
-            # week so a manual `up -d` on the previous tag stays possible.
+            # keep a week of images so a manual rollback stays possible
             docker image prune --all --force --filter until=168h
 
             compose ps
