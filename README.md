@@ -120,7 +120,7 @@ What it deliberately does **not** do:
 | Not done | Why |
 |---|---|
 | Rollback | Accepted for Dev. Redeploy an earlier commit by hand (`workflow_dispatch` with a sha) — the image prune keeps a week of tags so this stays possible. |
-| `git clean -fd` / `git checkout -f` | `.env`, `.github_token` and `certs/` live in the deploy directory untracked. Cleaning loses the host's secrets and certificates for good. |
+| `git clean -fd` / `git checkout -f` | `.env` and `certs/` live in the deploy directory untracked. Cleaning loses the host's secrets and certificates for good. |
 | `--remove-orphans` | The host runs containers this compose file does not define; the flag would remove them. |
 | Reload Nginx | Out of scope for a version deploy, by choice — keeping `/etc/nginx` writes out of CI means a bad template cannot take the site down unattended. A PR that changes `templates/nginx/`, a service port, or `JWT_SECRET` still needs `sudo ./bootstrap.sh -r` on the host. |
 | Edit `.env` | Host secrets are not in git and are never written by CI. New variables are added by hand, then `workflow_dispatch`. |
