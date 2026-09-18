@@ -28,8 +28,17 @@ services:
       PORT: 80
       BASE_URL: /api
       LOG_LEVEL: info
-      LOCAL_EMENU_CLOUD_URL: https://${SERVER_NAME}/emc/api/
+      # Server-to-server, so it stays inside the compose network: this host's
+      # nginx serves a certificate signed by the platform's own CA, which the
+      # container cannot verify (UNABLE_TO_VERIFY_LEAF_SIGNATURE). The e-menu API
+      # listens on port 80 with no path prefix — /emc/api is added by nginx.
+      LOCAL_EMENU_CLOUD_URL: http://line_menu_api/
+      # Public: handed to the browser to open the e-menu, so it must stay a URL a
+      # phone can reach.
       LOCAL_EMENU_CLOUD_LINE_OA: https://${SERVER_NAME}/emc/
+      # Only meaningful once CLOUD_SERVER_NAME is a different host. While it
+      # equals SERVER_NAME it points back here and hits the same CA problem, so
+      # single-host deployments must sync with target `local`.
       CLOUD_EMENU_CLOUD_URL: https://${CLOUD_SERVER_NAME}/emc/api/
       CLOUD_EMENU_CLOUD_LINE_OA: https://${CLOUD_SERVER_NAME}/emc/
       # MongoDB
