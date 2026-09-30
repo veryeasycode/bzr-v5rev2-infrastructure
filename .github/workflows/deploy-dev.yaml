@@ -33,13 +33,12 @@ jobs:
         env:
           DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.pull_request.head.sha }}
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
-          COMPOSE_PROJECT: ${{ vars.COMPOSE_PROJECT_NAME || 'bzrv5_rev2' }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: DEPLOY_REF,DEPLOY_DIR,COMPOSE_PROJECT
+          envs: DEPLOY_REF,DEPLOY_DIR
           script_stop: true
           script: |
             set -eu
@@ -64,8 +63,7 @@ jobs:
 
             # any --env-file disables auto-loading .env
             compose() {
-              docker compose -p "$COMPOSE_PROJECT" \
-                --env-file .env --env-file .env.versions "$@"
+              docker compose --env-file .env --env-file .env.versions "$@"
             }
 
             compose config --quiet
