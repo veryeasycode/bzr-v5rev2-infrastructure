@@ -181,7 +181,7 @@ services:
     environment:
       # Application
       PORT: 80
-      PAYMENT_EXPIRES_IN_SECONDS: ${EDC_PAYMENT_EXPIRES_IN_SECONDS}
+      PAYMENT_EXPIRES_IN_SECONDS: 600
       # MongoDB
       MONGO_HOST: host.docker.internal
       MONGO_PORT: ${MONGO_PORT}
