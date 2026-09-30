@@ -17,7 +17,7 @@ Package versions are pinned in the **Global Configuration** section at the top o
 2. TLS certificates at `certs/certificate.crt` and `certs/private.key` (required by the Nginx deploy step).
 3. A sudo-capable user.
 4. `docker login ghcr.io` on the host with a `read:packages` token, as the user the deploy
-   connects as — every service image is private.
+   connects as. Every service image is private.
 5. On a host that CI deploys to: `git config core.fileMode false` in the clone.
 
 ## Usage
@@ -73,22 +73,23 @@ See [compose.yaml](compose.yaml) for the full service list. Every service declar
 
 ### Service URLs
 
-- `LOCAL_EMENU_CLOUD_URL` uses the internal address `http://line_menu_api/` — containers cannot
-  verify this host's certificate. URLs handed to the browser (`*_LINE_OA`) stay public.
+- `LOCAL_EMENU_CLOUD_URL` uses the internal address `http://line_menu_api/` because containers
+  cannot verify this host's certificate. URLs handed to the browser (`*_LINE_OA`) stay public.
 - `CLOUD_*` URLs work only when `CLOUD_SERVER_NAME` is a different host; a single-host deployment
   syncs e-menu with target `local`.
 
 ## Deploying to Dev
 
-Open a PR into `dev` and [`deploy-dev.yaml`](.github/workflows/deploy-dev.yaml) deploys that
-commit's `.env.versions` to the Dev host (checkout → `compose pull` → `compose up -d`).
+Open a PR into `dev` and [`deploy-dev.yaml`](.github/workflows/deploy-dev.yaml) deploys the image
+tags pinned in that commit's `.env.versions` to the Dev host (checkout → `compose pull` →
+`compose up -d`).
 Only released tags belong in `.env.versions`.
 
 - After adding a variable to the host's `.env` by hand, or to roll back to an earlier commit,
   run the workflow via `workflow_dispatch`.
 - Changes to `templates/nginx/`, a service port, or `JWT_SECRET` still need
   `sudo ./bootstrap.sh -r` on the host.
-- Never `git clean` or `git checkout -f` the deploy directory — `.env` and `certs/` are untracked.
+- Never `git clean` or `git checkout -f` the deploy directory. `.env` and `certs/` are untracked.
 - Do not rename or move the deploy directory; the compose project name comes from it.
 - A deploy that fails at `compose pull` leaves the host on that commit; deploy a good commit
   before running compose by hand.
