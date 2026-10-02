@@ -16,6 +16,9 @@ Package versions are pinned in the **Global Configuration** section at the top o
 1. A `.env` file in the repository root — copy from [.env.example](.env.example) and fill in the secrets (`MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_REPLICA_SET`, `JWT_SECRET`, service ports, …).
 2. TLS certificates at `certs/certificate.crt` and `certs/private.key` (required by the Nginx deploy step).
 3. A sudo-capable user.
+4. `docker login ghcr.io` on the host with a `read:packages` token, as the user the deploy
+   connects as. Every service image is private.
+5. On a host that CI deploys to: `git config core.fileMode false` in the clone.
 
 ## Usage
 
@@ -68,12 +71,28 @@ See [compose.yaml](compose.yaml) for the full service list. Every service declar
 `environment:` block — there is no `env_file:`, so `.env` supplies only the values that
 `compose.yaml` interpolates plus what `bootstrap.sh` and `deploy_nginx_conf.sh` read directly.
 
+### Service URLs
+
+- `LOCAL_EMENU_CLOUD_URL` uses the internal address `http://line_menu_api/` because containers
+  cannot verify this host's certificate. URLs handed to the browser (`*_LINE_OA`) stay public.
+- `CLOUD_*` URLs work only when `CLOUD_SERVER_NAME` is a different host; a single-host deployment
+  syncs e-menu with target `local`.
+
+## Deploying to Dev
+
+See [.github/workflows/README.md](.github/workflows/README.md).
+
 ## Repository Layout
 
 ```
 bootstrap.sh                  # main entry point
 compose.yaml                  # Docker Compose service definitions
+.env.example                  # template for the untracked .env
 .env.versions                 # service image versions (git-tracked; pass via --env-file)
+certs/                        # TLS cert + key (untracked; supply per host)
+.github/workflows/
+  README.md                   # how each workflow is used
+  deploy-dev.yaml             # Deploy to Dev (PR into `dev`, or manual dispatch)
 scripts/
   deploy_nginx_conf.sh        # Nginx config deploy (templates + .env substitution)
   create_mongodb_user.js      # mongosh: create admin user
