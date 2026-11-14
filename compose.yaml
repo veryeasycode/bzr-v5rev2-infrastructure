@@ -238,6 +238,19 @@ services:
       EDC_URL: http://edc_api/edc
       # MongoDB
       DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@host.docker.internal:${MONGO_PORT}/${MONGO_DB}?authSource=admin&directConnection=true
+  health_check:
+    container_name: health_check
+    profiles:
+      - core-services
+    image: ghcr.io/veryeasycode/health-check:${SERVICE_HEALTH_CHECK_VERSION}
+    restart: always
+    extra_hosts:
+      host.docker.internal: host-gateway
+    ports:
+      - ${SERVICE_HEALTH_CHECK_PORT}:80
+    environment:
+      # MongoDB (hello needs no credentials)
+      DATABASE_URL: mongodb://host.docker.internal:${MONGO_PORT}/?directConnection=true
 # Cloud Services
   message_gateway:
     container_name: message_gateway
