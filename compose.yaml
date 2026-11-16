@@ -242,7 +242,7 @@ services:
     container_name: health_check
     profiles:
       - core-services
-    image: ghcr.io/veryeasycode/health-check:${SERVICE_HEALTH_CHECK_VERSION}
+    image: ghcr.io/veryeasycode/ngum-monitoring-service:${SERVICE_HEALTH_CHECK_VERSION}
     restart: always
     extra_hosts:
       host.docker.internal: host-gateway
